@@ -11,6 +11,8 @@
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:#f5f8fc;font:20px/1.6 system-ui,-apple-system,Arial,sans-serif}main{max-width:1400px;margin:auto;padding:24px}h1{font-size:34px;margin:0}h2{font-size:25px;margin:0 0 12px}h3{font-size:21px}.muted,small{color:var(--muted)}header,.card{background:var(--panel);padding:24px;border:1px solid var(--line);border-radius:18px;margin-bottom:20px}.warning{color:var(--warn);font-weight:700}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:20px}.grid .card{margin:0}.wide{grid-column:1/-1}button,select{font:inherit;min-height:64px;border-radius:12px;border:1px solid #7593b4;padding:12px 22px;background:#2b4666;color:#fff;touch-action:manipulation;cursor:pointer}button:hover{background:#375e87}button:disabled{opacity:.55;cursor:wait}.primary{background:#28578c;font-weight:700}button:focus-visible,a:focus-visible{outline:3px solid var(--warn);outline-offset:4px}.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:12px 0}label{padding:8px 0}input[type=checkbox]{width:26px;height:26px;vertical-align:middle;margin:0 8px}.status{font-weight:700;padding:8px 0;min-height:42px}.status[data-state=pass]{color:var(--ok)}.status[data-state=fail]{color:var(--bad)}.status[data-state=partial],.status[data-state=running]{color:var(--warn)}pre,textarea{white-space:pre-wrap;overflow-wrap:anywhere;direction:ltr;text-align:left;font:16px/1.55 ui-monospace,monospace;background:#0c121a;border:1px solid var(--line);padding:16px;border-radius:10px;max-height:410px;overflow:auto;margin:10px 0}#summary{max-height:760px}#map{height:450px;background:#101820;border-radius:10px;direction:ltr}meter{width:100%;height:38px}audio{width:100%;margin:10px 0}a{color:var(--blue)}.tag{border:1px solid var(--line);border-radius:8px;padding:4px 12px;font-size:17px}#fps{font-size:26px;font-weight:bold;color:var(--ok)}footer{margin:22px 0;color:var(--muted)}@media(max-width:600px){main{padding:12px}.grid{grid-template-columns:1fr}header,.card{padding:17px}h1{font-size:28px}button{width:100%}}
 
 #qrPanel{border:2px solid var(--line);border-radius:14px;padding:20px;margin:20px 0}#qrPanel[hidden]{display:none}#qrStage{direction:ltr;text-align:center;overflow:auto;background:#fff;padding:16px;border-radius:10px}#qrCanvas{display:block;margin:auto;image-rendering:pixelated;max-width:none}#qrPageLabel{font-weight:700}#qrText{max-height:180px}
+
+#gpsDrive .driveMetrics{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}#gpsDrive .driveMetric{background:#0c121a;border:1px solid var(--line);border-radius:10px;padding:10px}#gpsDrive .driveMetric span{display:block;font-size:15px;color:var(--muted)}#gpsDrive .driveMetric strong{display:block;font-size:29px;line-height:1.35;direction:ltr;text-align:right}#driveSpark{display:block;width:100%;height:70px;background:#0c121a;border:1px solid var(--line);border-radius:8px;margin-top:12px}#driveQRStage{background:white;overflow:auto;padding:16px;border-radius:10px}#driveQR{display:block;margin:auto;max-width:none;image-rendering:pixelated}#driveQRPanel[hidden]{display:none}#driveStatus{margin:4px 0;font-size:17px}#gpsDrive h2{margin-bottom:6px}#gpsDrive .row{margin:8px 0}@media(max-width:650px){#gpsDrive .driveMetrics{grid-template-columns:repeat(2,minmax(0,1fr))}#gpsDrive .driveMetric strong{font-size:28px}}
 </style>
 </head>
 <body>
@@ -18,12 +20,40 @@
 <header>
 <h1>מאיר — בדיקת דפדפן טסלה</h1>
 <p>דף אבחון ל־Model Y 2026 ולאפליקציית ניווט ישראלית. אין צורך בהתקנה.</p>
-<p class="warning">בצע את הבדיקה רק כשהרכב חונה בבטחה, במצב P. אין להפעיל את הבדיקות או לצלם בזמן נהיגה.</p>
+<p class="warning">את הבדיקות הרגילות יש לבצע בחניה במצב P. מדידת GPS בנסיעה מיועדת להפעלה בידי נוסע בלבד; הנהג לא ייגע במסך ולא יצלם.</p>
 <p class="muted">לא נשמרים תוצאות או הקלטות בשרת. מיקום ותמלול נשארים בדף עד רענון; דיבור לזיהוי עשוי להישלח לשירות של ספק הדפדפן. המפה טוענת קוד ואריחים מ־unpkg ומ־OpenFreeMap וחושפת להם כתובת IP. אין מפה שעוקבת אחר מיקומך.</p>
 <div class="row"><button id="runAll" class="primary">הפעל את כל הבדיקות</button><button id="stop">עצור הכול</button><label><input id="includeMap" type="checkbox" checked>כלול מפה חיצונית</label></div>
 <p id="global" role="status" aria-live="polite">מוכן. הרצה מלאה אורכת כדקה–שתיים. אפשר להפעיל כל בדיקה בנפרד.</p>
 <p class="muted">בדיקות קול, הרשאות, העתקה ומסך מלא עשויות לדרוש לחיצה נפרדת גם אחרי ״הפעל הכול״. ״תמיכה״ אינה הוכחה שהפעולה עובדת. אין להסיק מסוג GPU בלבד איזה MCU מותקן.</p>
 </header>
+<section id="gpsDrive" class="card">
+<h2>מדידת קצב מיקום בנסיעה</h2>
+<p class="warning" style="margin:4px 0;font-size:17px">נוסע בלבד מפעיל ומצלם; הנהג מתרכז בכביש. מומלץ למדוד 3–5 דקות. אין לעקוף חסימות של דפדפן הרכב.</p>
+<div class="row"><button id="driveStart" class="primary">מדידת קצב מיקום בנסיעה</button><button id="driveStop" disabled>עצור מדידה והצג QR</button><button id="driveShowQR">סיכום כ־QR</button><button id="driveCopy">העתק סיכום</button></div>
+<p id="driveStatus" role="status" aria-live="polite">מוכן — המדידה אינה חלק מ״הפעל הכול״. קישור עם ‎?gps=1 מפעיל אותה אוטומטית.</p>
+<div class="driveMetrics">
+<div class="driveMetric"><span>עדכונים</span><strong id="dCount">0</strong></div>
+<div class="driveMetric"><span>קצב ב־10 שניות (Hz)</span><strong id="dRate">—</strong></div>
+<div class="driveMetric"><span>מרווח ממוצע (ms)</span><strong id="dMean">—</strong></div>
+<div class="driveMetric"><span>זמן מדידה</span><strong id="dElapsed">00:00</strong></div>
+<div class="driveMetric"><span>מאז עדכון / פער מרבי (ms)</span><strong id="dGap">—</strong></div>
+<div class="driveMetric"><span>מינימום / מקסימום (ms)</span><strong id="dRange">—</strong></div>
+<div class="driveMetric"><span>חציון / p90 מרווח (ms)</span><strong id="dPercentile">—</strong></div>
+<div class="driveMetric"><span>Jitter — סטיית תקן (ms)</span><strong id="dJitter">—</strong></div>
+<div class="driveMetric"><span>דיוק נוכחי / חציון (מטר)</span><strong id="dAccuracy">—</strong></div>
+<div class="driveMetric"><span>מיקומים זהים ברצף</span><strong id="dDuplicates">—</strong></div>
+<div class="driveMetric"><span>מהירות API (קמ״ש)</span><strong id="dSpeed">—</strong></div>
+<div class="driveMetric"><span>מהירות מחושבת (קמ״ש)</span><strong id="dComputed">—</strong></div>
+<div class="driveMetric"><span>כיוון נוכחי / שיעור זמינות</span><strong id="dHeading">—</strong></div>
+<div class="driveMetric"><span>נעילת מסך ער</span><strong id="dWake" style="font-size:22px">—</strong></div>
+<div class="driveMetric"><span>שגיאות GPS</span><strong id="dErrors">0</strong></div>
+</div>
+<canvas id="driveSpark" width="1000" height="70" aria-label="מרווחי זמן בין 120 עדכוני המיקום האחרונים" role="img"></canvas>
+<details><summary>איך מחושבים המדדים ופרטיות</summary><p class="muted">המרווחים נמדדים בזמן הגעת callbacks באמצעות שעון מונוטוני; קצב = מספר callbacks בחלון 10 שניות חלקי משך החלון (בתחילת הריצה: הזמן שחלף). כפילויות = זוגות עוקבים עם lat/lon זהים בדיוק. המהירות המחושבת היא מרחק Haversine בין שני מיקומים חלקי הפרש timestamps של המיקומים, ועשויה לכלול רעש GPS. כיוון אינו צפוי תמיד בעמידה. הפער המרבי כולל המתנה לעדכון הבא או הראשון. Jitter הוא סטיית התקן של המרווחים. חציונים ו־p90 מדויקים עד 20,000 דגימות, ובהמשך מבוססי מדגם reservoir ומסומנים כמקורבים. ריצות ברקע מסומנות בסיכום. נשמר בזיכרון רק המיקום הקודם לחישוב מהירות; שום קואורדינטות או מסלול לא יוצאים לסיכום, ל־QR או לשרת. קצב callbacks אינו הוכחה לקצב החיישן או למיקום חדש.</p></details>
+<div id="driveQRPanel" hidden><h3>סיכום המדידה — סרוק בטלפון</h3><p>צילום מצב קבוע. אין קואורדינטות. לאחר מדידה נוספת לחץ שוב להצגת סיכום מעודכן.</p><div id="driveQRStage"><canvas id="driveQR" role="img" aria-label="QR של מדידת קצב המיקום"></canvas></div></div>
+<details><summary>סיכום JSON קצר (ללא קואורדינטות)</summary><pre id="driveJSON"></pre></details>
+</section>
+
 <div class="grid">
 <section class="card"><h2>1. דפדפן וחומרה</h2><button data-test="browser">בדוק דפדפן ו־GPU</button><div id="browser-status" class="status" role="status">טרם נבדק</div><pre id="browser-out"></pre></section>
 <section class="card"><h2>2. מיקום — כ־20 שניות</h2><button data-test="geo">בדוק GPS חי</button><div id="geo-status" class="status" role="status">טרם נבדק</div><pre id="geo-out"></pre><small>ללא נסיעה, מהירות וכיוון יכולים להיות null. דיוק ומיקום אינם נשמרים לאחר רענון.</small></section>
@@ -42,7 +72,7 @@
 <small>מקרא: p=עבר, f=נכשל, ?=חלקי, r=פועל, -=לא נבדק, s=דולג. null=אין נתון. ua=גרסת Chrome; vp=מסך התצוגה; c=ליבות; m=זיכרון; a=דיוק במטרים; n=עדכוני מיקום; hz=עדכונים לשנייה; he=מספר קולות בעברית; tex=גודל מרקם מרבי; st=אחסון ויכולות. אם יש כמה עמודים, סרוק ושלח את כולם לפי הסדר.</small>
 </div><pre id="summary" tabindex="0"></pre></section>
 </div>
-<footer>גרסה 1.0 · אין אנליטיקה, חשבון או פרסומות · <a href="https://maplibre.org/">MapLibre</a> / <a href="https://openfreemap.org/">OpenFreeMap</a> · נתוני מפה © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a><br>הבדיקה מתארת רק את מצב החניה הנוכחי. ייתכנו מגבלות אחרות בזמן נסיעה ובעדכוני תוכנה עתידיים.</footer>
+<footer>גרסה 1.0 · אין אנליטיקה, חשבון או פרסומות · <a href="https://maplibre.org/">MapLibre</a> / <a href="https://openfreemap.org/">OpenFreeMap</a> · נתוני מפה © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a><br>הבדיקות הרגילות מיועדות לחניה; מדידת קצב GPS בנסיעה מיועדת לנוסע בלבד. יכולות הדפדפן עשויות להשתנות בזמן נסיעה ובעדכוני תוכנה.</footer>
 </main>
 <script>
 /* qrcode-generator 2.0.4, Kazuhiko Arase, MIT License.
@@ -2536,6 +2566,51 @@ $('redact').onchange=renderSummary;
 $('copy').onclick=async function(){var text=JSON.stringify(exportData(),null,2);try{if(!navigator.clipboard||!navigator.clipboard.writeText)throw new Error('Clipboard API unavailable');await limited(navigator.clipboard.writeText(text),4000);$('copy-status').textContent='ה־JSON הועתק. ודא שהמיקום והתמלול מוסתרים לפני שיתוף.';}catch(e){var area=document.createElement('textarea');area.value=text;area.setAttribute('readonly','');document.body.appendChild(area);area.select();var ok=false;try{ok=document.execCommand('copy');}catch(ignored){}area.remove();$('copy-status').textContent=ok?'ה־JSON הועתק בשיטה חלופית.':'העתקה נחסמה: '+e.message+' — צלם את הסיכום או נסה הורדה.';}};
 $('download').onclick=function(){var url=URL.createObjectURL(new Blob([JSON.stringify(exportData(),null,2)],{type:'application/json'}));var a=document.createElement('a');a.href=url;a.download='tesla-browser-results-'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';a.click();setTimeout(function(){URL.revokeObjectURL(url);},2000);$('copy-status').textContent='התבקשה הורדה; דפדפן טסלה עשוי לא לתמוך בהורדות. אפשר גם לצלם.';};
 window.addEventListener('pagehide',function(){generation++;Object.keys(cleanup).forEach(dispose);});
+
+// Passenger-operated, unlimited-duration location-rate mode. No coordinate export.
+var drive=null,driveWatch=null,driveTimer=null,driveLock=null,driveEpoch=0;
+function driveFinite(n){return typeof n==='number'&&isFinite(n);}
+function driveRound(n,places){return driveFinite(n)?+n.toFixed(places===undefined?1:places):null;}
+function driveFmt(n){return driveFinite(n)?String(Math.round(n)):'—';}
+function driveSample(arr,value,total){if(arr.length<20000)arr.push(value);else{var j=Math.floor(Math.random()*total);if(j<arr.length)arr[j]=value;}}
+function driveQuantile(arr,q){if(!arr.length)return null;var sorted=arr.slice().sort(function(a,b){return a-b;}),pos=(sorted.length-1)*q,lo=Math.floor(pos),hi=Math.ceil(pos);return sorted[lo]+(sorted[hi]-sorted[lo])*(pos-lo);}
+function driveElapsed(){return drive?Math.max(0,((drive.running?performance.now():drive.end)-drive.begin)/1000):0;}
+function driveStats(){
+if(!drive)return {v:1,type:'gps-rate',state:'not-started'};
+var d=drive,now=d.running?performance.now():d.end,elapsed=driveElapsed(),cut=now-10000;
+while(d.window.length&&d.window[0]<cut)d.window.shift();
+var gap=now-(d.lastArrival===null?d.begin:d.lastArrival),intervals=d.count-1;
+return {v:1,type:'gps-rate',state:d.running?'running':'stopped',sec:driveRound(elapsed),n:d.count,hz10:elapsed>=1?driveRound(d.window.length/Math.min(10,elapsed),2):null,
+ms:{avg:intervals>0?driveRound(d.mean):null,min:intervals>0?driveRound(d.min):null,max:intervals>0?driveRound(d.max):null,med:driveRound(driveQuantile(d.intervals,.5)),p90:driveRound(driveQuantile(d.intervals,.9)),jitter:intervals>0?driveRound(Math.sqrt(Math.max(0,d.m2/intervals))):null,gap:driveRound(Math.max(d.longestGap,gap)),age:driveRound(gap)},
+a:{now:driveRound(d.accuracy),med:driveRound(driveQuantile(d.accuracies,.5))},
+kmh:{api:driveRound(d.speed),calc:driveRound(d.computed)},hdg:{now:driveRound(d.heading),ratio:d.count?driveRound(d.headings/d.count,3):null},dup:intervals>0?driveRound(d.duplicates/intervals,3):null,
+err:d.errors,lastErr:d.lastError,invalid:d.invalid,stale:d.stale,hidden:d.hidden,hiddenSec:driveRound(d.hiddenMs/1000+(d.hiddenSince===null?0:(now-d.hiddenSince)/1000)),
+wake:d.wake,approx:Math.max(intervals,d.accuracyCount)>20000,https:+!!window.isSecureContext,ua:(navigator.userAgent.match(/Chrome\/([\d.]+)/)||[])[1]||null,vp:[innerWidth,innerHeight]};
+}
+function renderDrive(){if(!drive)return;var s=driveStats();$('dCount').textContent=s.n;$('dRate').textContent=s.hz10===null?'—':s.hz10.toFixed(2);$('dMean').textContent=driveFmt(s.ms.avg);var seconds=Math.floor(s.sec);$('dElapsed').textContent=String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0');$('dGap').textContent=driveFmt(s.ms.age)+' / '+driveFmt(s.ms.gap);$('dRange').textContent=driveFmt(s.ms.min)+' / '+driveFmt(s.ms.max);$('dPercentile').textContent=driveFmt(s.ms.med)+' / '+driveFmt(s.ms.p90);$('dJitter').textContent=driveFmt(s.ms.jitter);$('dAccuracy').textContent=driveFmt(s.a.now)+' / '+driveFmt(s.a.med);$('dDuplicates').textContent=s.dup===null?'—':(s.dup*100).toFixed(1)+'%';$('dSpeed').textContent=s.kmh.api===null?'—':s.kmh.api.toFixed(1);$('dComputed').textContent=s.kmh.calc===null?'—':s.kmh.calc.toFixed(1);$('dHeading').textContent=(s.hdg.now===null?'—':Math.round(s.hdg.now)+'°')+' / '+(s.hdg.ratio===null?'—':Math.round(s.hdg.ratio*100)+'%');$('dWake').textContent={held:'פעילה',released:'שוחררה',unsupported:'לא נתמכת',requesting:'מבקש…',denied:'נחסמה',waiting:'ממתין'}[s.wake]||s.wake;$('dErrors').textContent=s.err;$('driveJSON').textContent=JSON.stringify(s);
+var canvas=$('driveSpark'),ctx=canvas.getContext('2d');if(!ctx)return;ctx.fillStyle='#0c121a';ctx.fillRect(0,0,canvas.width,canvas.height);var values=drive.spark,max=Math.max.apply(null,[1].concat(values));ctx.strokeStyle='#7fe0ae';ctx.lineWidth=2;ctx.beginPath();values.forEach(function(v,i){var x=i*canvas.width/Math.max(1,values.length-1),y=canvas.height-7-v/max*(canvas.height-14);if(i)ctx.lineTo(x,y);else ctx.moveTo(x,y);});ctx.stroke();ctx.fillStyle='#bdc9d8';ctx.font='13px monospace';ctx.fillText('last '+values.length+' intervals; max '+Math.round(max)+' ms',8,15);
+}
+async function requestDriveWake(){if(!drive||!drive.running)return;var token=driveEpoch;if(!navigator.wakeLock){drive.wake='unsupported';renderDrive();return;}if(document.visibilityState==='hidden'){drive.wake='waiting';return;}if(driveLock&&!driveLock.released)return;drive.wake='requesting';renderDrive();try{var lock=await navigator.wakeLock.request('screen');if(token!==driveEpoch||!drive||!drive.running){await lock.release();return;}driveLock=lock;drive.wake='held';lock.addEventListener('release',function(){if(driveLock===lock){driveLock=null;if(drive&&drive.running){drive.wake='released';renderDrive();}}});}catch(e){if(token===driveEpoch&&drive){drive.wake='denied';}}renderDrive();}
+function driveDistance(a,b){var rad=Math.PI/180,p1=a.lat*rad,p2=b.lat*rad,dp=(b.lat-a.lat)*rad,dl=(b.lon-a.lon)*rad,h=Math.sin(dp/2)*Math.sin(dp/2)+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)*Math.sin(dl/2);return 6371000*2*Math.atan2(Math.sqrt(Math.max(0,h)),Math.sqrt(Math.max(0,1-h)));}
+function startDrive(){if(drive&&drive.running)return;if(!navigator.geolocation){$('driveStatus').textContent='Geolocation אינו זמין בדפדפן זה.';return;}
+var now=performance.now();driveEpoch++;var token=driveEpoch;drive={running:true,begin:now,end:null,count:0,lastArrival:null,previous:null,window:[],intervals:[],accuracies:[],accuracyCount:0,spark:[],mean:0,m2:0,min:Infinity,max:0,longestGap:0,duplicates:0,headings:0,heading:null,accuracy:null,speed:null,computed:null,errors:0,lastError:null,invalid:0,stale:0,wake:'waiting',hidden:document.visibilityState==='hidden'?1:0,hiddenSince:document.visibilityState==='hidden'?now:null,hiddenMs:0};
+$('driveStart').disabled=true;$('driveStop').disabled=false;$('driveQRPanel').hidden=true;$('driveStatus').textContent='מודד ברציפות — מומלץ 3–5 דקות. רק נוסע מפעיל. ממתין למיקום…';renderDrive();requestDriveWake();
+function success(p){if(token!==driveEpoch||!drive.running)return;var d=drive,c=p.coords,now=performance.now();if(!c||!driveFinite(c.latitude)||!driveFinite(c.longitude)){d.invalid++;renderDrive();return;}
+if(d.lastArrival!==null){var interval=now-d.lastArrival,n=d.count;d.min=Math.min(d.min,interval);d.max=Math.max(d.max,interval);var delta=interval-d.mean;d.mean+=delta/n;d.m2+=delta*(interval-d.mean);driveSample(d.intervals,interval,n);d.spark.push(interval);if(d.spark.length>120)d.spark.shift();}d.longestGap=Math.max(d.longestGap,now-(d.lastArrival===null?d.begin:d.lastArrival));d.lastArrival=now;d.count++;d.window.push(now);d.accuracy=driveFinite(c.accuracy)?c.accuracy:null;if(d.accuracy!==null){d.accuracyCount++;driveSample(d.accuracies,d.accuracy,d.accuracyCount);}d.speed=driveFinite(c.speed)&&c.speed>=0?c.speed*3.6:null;d.heading=driveFinite(c.heading)?c.heading:null;if(d.heading!==null)d.headings++;
+var point={lat:c.latitude,lon:c.longitude,t:p.timestamp};d.computed=null;if(d.previous){if(point.lat===d.previous.lat&&point.lon===d.previous.lon)d.duplicates++;var dt=point.t-d.previous.t;if(driveFinite(dt)&&dt>0)d.computed=driveDistance(d.previous,point)/(dt/1000)*3.6;else d.stale++;}d.previous=point;$('driveStatus').textContent='המדידה פועלת — רק נוסע מפעיל. מיקום אחרון התקבל; ניתן לעצור אחרי 3–5 דקות.';renderDrive();}
+function failure(e){if(token!==driveEpoch||!drive.running)return;drive.errors++;drive.lastError={code:e.code,name:{1:'denied',2:'unavailable',3:'timeout'}[e.code]||'error'};$('driveStatus').textContent='שגיאת מיקום '+e.code+': '+(e.message||'ללא פירוט')+(e.code===1?' — המדידה נעצרה.':' — ממשיך להמתין; פערים נכללים במדידה.');renderDrive();if(e.code===1)stopDrive(false);}
+try{driveWatch=navigator.geolocation.watchPosition(success,failure,{enableHighAccuracy:true,maximumAge:0,timeout:10000});}catch(e){drive.lastError={name:e.name};drive.errors++;$('driveStatus').textContent='לא ניתן להתחיל: '+e.message;stopDrive(false);return;}driveTimer=setInterval(renderDrive,500);$('gpsDrive').scrollIntoView({block:'start',behavior:'smooth'});
+}
+function stopDrive(show){if(!drive||!drive.running)return;drive.running=false;drive.end=performance.now();if(drive.hiddenSince!==null){drive.hiddenMs+=drive.end-drive.hiddenSince;drive.hiddenSince=null;}drive.previous=null;driveEpoch++;if(driveWatch!==null){navigator.geolocation.clearWatch(driveWatch);driveWatch=null;}clearInterval(driveTimer);driveTimer=null;if(driveLock){var lock=driveLock;driveLock=null;lock.release().catch(function(){});}drive.wake=drive.wake==='held'?'released':drive.wake;$('driveStart').disabled=false;$('driveStop').disabled=true;renderDrive();if(show!==false){$('driveStatus').textContent='המדידה נעצרה. סיכום ללא קואורדינטות מוכן לסריקה או העתקה.';showDriveQR();}}
+function showDriveQR(){if(!drive){$('driveStatus').textContent='התחל מדידה לפני הצגת סיכום.';return;}var text=JSON.stringify(driveStats());$('driveJSON').textContent=text;try{var qr=qrcode(0,'M');qr.addData(text,'Byte');qr.make();var n=qr.getModuleCount(),scale=Math.ceil(600/(n+8)),canvas=$('driveQR'),side=(n+8)*scale,ctx=canvas.getContext('2d');canvas.width=side;canvas.height=side;canvas.style.width=side+'px';canvas.style.height=side+'px';ctx.fillStyle='#fff';ctx.fillRect(0,0,side,side);ctx.fillStyle='#000';for(var row=0;row<n;row++)for(var col=0;col<n;col++)if(qr.isDark(row,col))ctx.fillRect((col+4)*scale,(row+4)*scale,scale,scale);$('driveQRPanel').hidden=false;}catch(e){$('driveStatus').textContent='יצירת QR נכשלה: '+e.message;}}
+$('driveStart').onclick=startDrive;$('driveStop').onclick=function(){stopDrive(true);};$('driveShowQR').onclick=showDriveQR;
+$('driveCopy').onclick=async function(){if(!drive){$('driveStatus').textContent='טרם התחילה מדידה.';return;}var text=JSON.stringify(driveStats());try{if(!navigator.clipboard)throw new Error('Clipboard unavailable');await navigator.clipboard.writeText(text);$('driveStatus').textContent='הסיכום הועתק — ללא קואורדינטות.';}catch(e){var area=document.createElement('textarea');area.value=text;document.body.appendChild(area);area.select();var ok=false;try{ok=document.execCommand('copy');}catch(ignored){}area.remove();$('driveStatus').textContent=ok?'הסיכום הועתק.':'העתקה נחסמה — השתמש ב־QR או בסיכום הטקסט.';}};
+// Global Stop also stops the dedicated watcher; ordinary Run All does not start it.
+$('stop').addEventListener('click',function(){stopDrive(true);});
+document.addEventListener('visibilitychange',function(){if(!drive||!drive.running)return;var now=performance.now();if(document.visibilityState==='hidden'){drive.hidden++;drive.hiddenSince=now;}else{if(drive.hiddenSince!==null){drive.hiddenMs+=now-drive.hiddenSince;drive.hiddenSince=null;}requestDriveWake();}renderDrive();});
+window.addEventListener('pagehide',function(){stopDrive(false);});
+if(new URLSearchParams(location.search).get('gps')==='1')setTimeout(startDrive,0);
+
 renderSummary();if(!window.isSecureContext)$('global').textContent='אזהרה: זה אינו הקשר מאובטח. פתח כתובת HTTPS ציבורית; בדיקות מיקום, מיקרופון והרשאות עשויות להיחסם.';
 })();
 </script>
