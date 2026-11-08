@@ -1,78 +1,76 @@
-/* Standalone concept prototype. Real OSM geometry and OSRM route; simulated driving and reports. */
+/* Real OSM route/buildings, simulated FSD-inspired street visualization. Not vehicle perception. */
 'use strict';
-const $ = id => document.getElementById(id);
-const RAD = Math.PI/180, SPEED = 10.5, START = 530, DURATION = 24;
-const CHASE = Object.freeze({zoom:19.18,pitch:76,maxPitch:85,verticalFov:45,carScreenWidth:.09});
-// Presentation camera: physical 4.7m model, with an independent close-up ego view.
-// This intentionally treats the ego as an FSD-style glyph, not a surveyed-scale map object.
-const worldScaleCar = new URLSearchParams(location.search).has('worldscale');
-let lastRouteUpdate=-Infinity;
-let map, carLayer, path, cumulative, route, virtualTime = 0, ready=false, recording=false;
-const distance = (a,b) => {const dlat=(b[1]-a[1])*RAD,dlon=(b[0]-a[0])*RAD;return 6371000*2*Math.asin(Math.sqrt(Math.sin(dlat/2)**2+Math.cos(a[1]*RAD)*Math.cos(b[1]*RAD)*Math.sin(dlon/2)**2))};
-const bearing=(a,b)=>Math.atan2(Math.sin((b[0]-a[0])*RAD)*Math.cos(b[1]*RAD),Math.cos(a[1]*RAD)*Math.sin(b[1]*RAD)-Math.sin(a[1]*RAD)*Math.cos(b[1]*RAD)*Math.cos((b[0]-a[0])*RAD))/RAD;
-function at(d){d=Math.min(Math.max(d,0),cumulative.at(-1)-.01);let i=1;while(cumulative[i]<d)i++;const f=(d-cumulative[i-1])/(cumulative[i]-cumulative[i-1]);return [path[i-1][0]+(path[i][0]-path[i-1][0])*f,path[i-1][1]+(path[i][1]-path[i-1][1])*f]}
-const headingAt=d=>bearing(at(d-12),at(d+18));
+const $=id=>document.getElementById(id),RAD=Math.PI/180,START=530,SPEED=10.5,DURATION=24,LANE=3.3;
+const FSD={height:2.35,behind:7.8,fov:52,lookAhead:43,lookHeight:1.1,roadWidth:9.9};
+let renderer,scene,camera,ego,path,cumulative,route,origin,streetData,ready=false,recording=false,virtualTime=0,shadowTexture;
+let capture,ctx,paused=false,startTime=null,last=null;
+const traffic=[],reportSprites=[],blueSegments=[];
+const reports=[{d:START+65,title:'משטרה',icon:'♧',confirmed:3,type:'police'},{d:START+150,title:'מפגע',icon:'△',confirmed:2,type:'hazard'},{d:START+245,title:'עבודות בכביש',icon:'⚒',confirmed:5,type:'works'}];
+const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
 const angleDelta=(a,b)=>((b-a+540)%360)-180;
-// Arc-distance filtering is independent of frame rate, seeks and capture order.
-// A trailing weighted 20m heading window removes OSRM segment-heading chatter.
-function chaseHeading(d){
- const reference=headingAt(d);let sum=0,weights=0;
- for(let i=0;i<=10;i++){const w=11-i;sum+=angleDelta(reference,headingAt(d-i*2))*w;weights+=w}
- return reference+sum/weights;
-}
-function smoothPosition(d){
- // C1 Hermite interpolation in a short arc-length window removes polygonal GPS-like corners.
- const step=2, d0=Math.floor(d/step)*step,u=(d-d0)/step;
- const p0=at(d0),p1=at(d0+step),before=at(d0-step),after=at(d0+2*step);
- const h00=2*u*u*u-3*u*u+1,h10=u*u*u-2*u*u+u,h01=-2*u*u*u+3*u*u,h11=u*u*u-u*u;
- return p0.map((v,i)=>h00*v+h10*(p1[i]-before[i])*.5+h01*p1[i]+h11*(after[i]-v)*.5);
-}
-function cameraOptions(d){
- const h=map?.getContainer().clientHeight||900;
- return {center:smoothPosition(d),zoom:CHASE.zoom,pitch:CHASE.pitch,bearing:chaseHeading(d),
-  padding:{top:h*.35,bottom:0,left:0,right:0}};
-}
-const feature=(geometry,properties={})=>({type:'Feature',properties,geometry});
-const line=coords=>feature({type:'LineString',coordinates:coords});
-function slicePath(d){let i=1;while(cumulative[i]<d && i<cumulative.length-1)i++;return [at(d),...path.slice(i)]}
-const reports=[{d:START+395,title:'משטרה',icon:'♧',confirmed:3,type:'police'},{d:START+570,title:'עבודות בכביש',icon:'⚒',confirmed:5,type:'works'},{d:START+760,title:'מפגע',icon:'△',confirmed:2,type:'hazard'}];
-function makeStyle(base){
- base.name='Derekh — monochrome night';base.light={anchor:'viewport',color:'#ffffff',intensity:.32,position:[1.35,210,30]};
- base.layers=base.layers.filter(l=>l.type!=='raster' && !(l.type==='symbol' && !l.id.startsWith('highway-name-')) && !/rail|hatching|pattern|aeroway/.test(l.id));
- for(const l of base.layers){
-  l.paint ||= {};
-  if(l.type==='background')l.paint={'background-color':'#1b2026'};
-  if(l.type==='fill'){
-   let color='#20262c';if(/water/.test(l.id))color='#1d2d39';else if(/park|wood|grass|landcover|landuse/.test(l.id))color='#222d2b';else if(/building/.test(l.id))color='#444a50';else if(/road/.test(l.id))color='#30373e';
-   l.paint={'fill-color':color,'fill-opacity':1};
-  }
-  if(l.type==='line'){
-   const casing=/casing/.test(l.id);l.paint['line-color']=/water/.test(l.id)?'#263c49':casing?'#555f68':/path/.test(l.id)?'#35443f':'#343d46';l.paint['line-opacity']=1;
-   delete l.paint['line-pattern'];
-   if(l['source-layer']==='transportation'){
-    l.paint['line-width']=['interpolate',['linear'],['zoom'],13,casing?1.8:1.2,17,casing?10:8,20,casing?38:35];
-    if(/service|path|track/.test(l.id))l.paint['line-width']=['interpolate',['linear'],['zoom'],13,0.3,17,casing?4:2,20,casing?16:13];
-   }
-  }
-  if(l.type==='symbol'){
-   l.minzoom=16;l.layout['text-field']=['coalesce',['get','name:he'],['get','name']];
-   l.layout['text-size']=12;l.layout['text-font']=['Noto Sans Regular'];l.layout['text-max-angle']=25;l.layout['symbol-spacing']=440;
-   l.paint={'text-color':'#a6b1be','text-halo-color':'#18212b','text-halo-width':2,'text-opacity':.8};
-   delete l.layout['icon-image'];
-  }
-  if(l.type==='fill-extrusion'){
-   l.paint={'fill-extrusion-height':['coalesce',['get','render_height'],['get','height'],12],
-   'fill-extrusion-base':['coalesce',['get','render_min_height'],0],
-   'fill-extrusion-color':['interpolate',['linear'],['coalesce',['get','render_height'],12],0,'#bcc1c7',20,'#c6cbd0',80,'#d1d5da',180,'#e0e3e6'],
-   'fill-extrusion-opacity':1,'fill-extrusion-vertical-gradient':true};
-  }
+function xy(p){return new THREE.Vector3((p[0]-origin[0])*111320*Math.cos(origin[1]*RAD),(p[1]-origin[1])*110540,0)}
+function at(d){d=clamp(d,0,cumulative.at(-1)-.001);let lo=0,hi=cumulative.length-1;while(hi-lo>1){const m=(lo+hi)>>1;if(cumulative[m]>d)hi=m;else lo=m}const f=(d-cumulative[lo])/(cumulative[hi]-cumulative[lo]);return path[lo].clone().lerp(path[hi],f)}
+function position(d){const step=2,d0=Math.floor(d/step)*step,u=(d-d0)/step,p0=at(d0),p1=at(d0+step),a=at(d0-step),b=at(d0+2*step);return p0.multiplyScalar(2*u*u*u-3*u*u+1).add(p1.clone().multiplyScalar(-2*u*u*u+3*u*u)).add(p1.sub(a).multiplyScalar((u*u*u-2*u*u+u)*.5)).add(b.sub(at(d0)).multiplyScalar((u*u*u-u*u)*.5))}
+function tangent(d,window=3){return position(d+window).sub(position(d-window)).normalize()}
+function heading(d){const v=tangent(d,7);return Math.atan2(v.x,v.y)}
+function frameAt(d,offset=0,z=0){const p=position(d),t=tangent(d);return p.add(new THREE.Vector3(t.y,-t.x,0).multiplyScalar(offset)).setZ(z)}
+function cameraFrame(d){const p=position(d),forward=tangent(d,12);return {position:p.clone().addScaledVector(forward,-FSD.behind).setZ(FSD.height),target:p.clone().addScaledVector(forward,FSD.lookAhead).setZ(FSD.lookHeight)}}
+function ribbon(start,end,left,right,z,material,step=1.5){
+ const points=[],normal=[],uv=[];const segments=Math.max(1,Math.ceil((end-start)/step));
+ for(let i=0;i<segments;i++){
+  const a=start+(end-start)*i/segments,b=start+(end-start)*(i+1)/segments;
+  const p=[frameAt(a,left,z),frameAt(a,right,z),frameAt(b,left,z),frameAt(b,right,z)];
+  for(const k of [0,1,2,2,1,3]){points.push(p[k].x,p[k].y,p[k].z);normal.push(0,0,1);uv.push((k%2),k<2?i:i+1)}
  }
- return base;
+ const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(points,3));g.setAttribute('normal',new THREE.Float32BufferAttribute(normal,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));const m=new THREE.Mesh(g,material);scene.add(m);return m;
 }
-function makeCarLayer(){
+const basicCache=new Map();
+function basic(color,opacity=1){const key=color+opacity;if(!basicCache.has(key))basicCache.set(key,new THREE.MeshBasicMaterial({color,transparent:opacity<1,opacity,depthWrite:opacity>=1,side:THREE.DoubleSide}));return basicCache.get(key)}
+function placeBox(w,l,h,p,angle,material){const m=new THREE.Mesh(new THREE.BoxGeometry(w,l,h),material);m.position.copy(p);m.rotation.z=-angle;scene.add(m);return m}
+function makeRoad(){
+ const length=cumulative.at(-1),asphalt=new THREE.MeshLambertMaterial({color:'#161b22',side:THREE.DoubleSide}),edge=basic('#c8d1da',.88),faint=basic('#a9b9ca',.065),dash=basic('#d9e1e8',.85),curb=new THREE.MeshLambertMaterial({color:'#49515a'});
+ ribbon(0,length,-4.95,4.95,.01,asphalt);
+ for(const o of [-4.88,4.88]){ribbon(0,length,o-.055,o+.055,.035,edge);ribbon(0,length,o-.12,o+.12,.031,faint)}
+ for(const o of [-1.65,1.65])for(let d=0;d<length;d+=9){ribbon(d,Math.min(d+3,length),o-.055,o+.055,.04,dash);ribbon(d,Math.min(d+3,length),o-.12,o+.12,.037,faint)}
+ for(const o of [-5.16,5.16]){ribbon(0,length,o-.14,o+.14,.16,curb);ribbon(0,length,o-.25,o+.25,.013,basic('#252b32'))}
+ // Faint real side-road geometry. Main road/lanes are procedural, not lane-survey data.
+ const sideVertices=[];
+ for(const r of streetData.roads){if(['path','track','rail','transit'].includes(r.class))continue;
+  const vs=r.coordinates.map(xy);if(vs.length<2)continue;
+  for(let i=1;i<vs.length;i++)sideVertices.push(vs[i-1].x,vs[i-1].y,-.015,vs[i].x,vs[i].y,-.015);
+ }
+ const sideGeometry=new THREE.BufferGeometry();sideGeometry.setAttribute('position',new THREE.Float32BufferAttribute(sideVertices,3));scene.add(new THREE.LineSegments(sideGeometry,new THREE.LineBasicMaterial({color:'#46515d',transparent:true,opacity:.18})));
+ for(const c of streetData.intersections){
+  const center=position(c.d),angle=c.heading*RAD;
+  placeBox(6.6,42,.018,center.clone().setZ(.012),angle,asphalt);
+  // Simulated crosswalks at real cross-street locations, no claim of surveyed markings.
+  for(const station of [c.d-7,c.d+7])for(let offset=-4.4;offset<4.5;offset+=1.0)placeBox(.55,2.5,.018,frameAt(station,offset,.055),heading(station),basic('#bec8d2',.76));
+  ribbon(c.d-10,c.d-9.7,-1.55,4.75,.057,basic('#cbd4dc',.8));
+  const mast=frameAt(c.d-8,5.5,.0),pole=new THREE.MeshLambertMaterial({color:'#69737e'});
+  placeBox(.12,.12,4.6,mast.clone().setZ(2.3),0,pole);const sig=placeBox(.45,.24,1.13,mast.clone().setZ(4.20),heading(c.d),new THREE.MeshLambertMaterial({color:'#10151b'}));
+  for(let k=0;k<3;k++){const bulb=new THREE.Mesh(new THREE.SphereGeometry(.115,10,8),basic(k===2?'#67e4b0':'#28353a'));bulb.position.copy(mast).setZ(4.53-k*.32);scene.add(bulb)}
+ }
+ // Dynamic ego-lane path uses an actual road-width strip in the same perspective.
+ const blueMat=new THREE.MeshBasicMaterial({color:'#2584ff',transparent:true,opacity:.40,depthWrite:false,side:THREE.DoubleSide});
+ for(let i=0;i<85;i++){const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(new Float32Array(18),3));g.setAttribute('normal',new THREE.Float32BufferAttribute([0,0,1,0,0,1,0,0,1,0,0,1,0,0,1,0,0,1],3));const m=new THREE.Mesh(g,blueMat);m.frustumCulled=false;scene.add(m);blueSegments.push(m)}
+}
+function updateBlue(d){
+ for(let i=0;i<blueSegments.length;i++){
+  const a=d+2.8+i,b=a+1,w=.89;const p=[frameAt(a,-w,.065),frameAt(a,w,.065),frameAt(b,-w,.065),frameAt(b,w,.065)],arr=blueSegments[i].geometry.attributes.position.array;
+  let n=0;for(const k of [0,1,2,2,1,3]){arr[n++]=p[k].x;arr[n++]=p[k].y;arr[n++]=p[k].z}blueSegments[i].geometry.attributes.position.needsUpdate=true;
+ }
+}
+function makeBuildings(){
+ const pos=[],norm=[],color=[];
+ for(const b of streetData.buildings){if(b.ring.length<4)continue;const vertices=b.ring.slice(0,-1).map(xy);const shape=new THREE.Shape(vertices.map(p=>new THREE.Vector2(p.x,p.y)));let g=new THREE.ExtrudeGeometry(shape,{depth:clamp(Number(b.height)||12,5,90),bevelEnabled:false,steps:1,curveSegments:1});if(g.index)g=g.toNonIndexed();const a=g.attributes.position.array,n=g.attributes.normal.array;for(let i=0;i<a.length;i++)pos.push(a[i]);for(let i=0;i<n.length;i++)norm.push(n[i]);
+  const tone=.48+Math.min(Number(b.height)||12,40)/400;for(let i=0;i<a.length/3;i++)color.push(tone,tone*1.035,tone*1.08);g.dispose();
+ }
+ const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.setAttribute('normal',new THREE.Float32BufferAttribute(norm,3));geo.setAttribute('color',new THREE.Float32BufferAttribute(color,3));geo.computeBoundingSphere();scene.add(new THREE.Mesh(geo,new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide})));
+}
+function makeVehicle(bodyColor="#f2f4f7"){
  const mat=(c,r=.5,m=.12)=>new THREE.MeshStandardMaterial({color:c,roughness:r,metalness:m});
- const white=mat('#f2f4f7',.28),trim=mat('#192029',.55),glass=mat('#111e2d',.15,.28),rim=mat('#b7c0ca',.3,.55),rubber=mat('#11141a',.95,0);
- const car=new THREE.Group(),scene=new THREE.Scene();
+ const white=mat(bodyColor,.28),trim=mat('#192029',.55),glass=mat('#111e2d',.15,.28),rim=mat('#b7c0ca',.3,.55),rubber=mat('#11141a',.95,0);
+ const car=new THREE.Group(),scene=new THREE.Group();
  function add(mesh,x=0,y=0,z=0){mesh.position.set(x,y,z);car.add(mesh);return mesh}
  const box=(w,l,h,x,y,z,m)=>add(new THREE.Mesh(new THREE.BoxGeometry(w,l,h),m),x,y,z);
  function rounded(w,l,h,r,x,y,z,m){
@@ -110,107 +108,79 @@ function makeCarLayer(){
   rounded(.54,.045,.08,.018,x,-2.322,.77,red);
  }
  box(1.12,.035,.10,0,-2.32,.87,red);box(.47,.03,.16,0,-2.33,.49,trim);box(.66,.04,.08,0,2.32,.49,trim);
- scene.add(car);scene.add(new THREE.HemisphereLight(0xffffff,0x465265,1.7));const sun=new THREE.DirectionalLight(0xffffff,2.2);sun.position.set(-7,-6,12);scene.add(sun);
+ car.scale.z=1.10;scene.add(car);
  // One small radial alpha texture, reused by the soft contact shadow and blue ground glow.
  const canvas=document.createElement('canvas');canvas.width=canvas.height=64;const c=canvas.getContext('2d'),grad=c.createRadialGradient(32,32,1,32,32,32);grad.addColorStop(0,'#ffffffdd');grad.addColorStop(.45,'#ffffff99');grad.addColorStop(1,'#ffffff00');c.fillStyle=grad;c.fillRect(0,0,64,64);
- const tex=new THREE.CanvasTexture(canvas);
+ const tex=shadowTexture||(shadowTexture=new THREE.CanvasTexture(canvas));
  function ground(w,l,color,opacity,z){const o=new THREE.Mesh(new THREE.PlaneGeometry(w,l),new THREE.MeshBasicMaterial({color,map:tex,transparent:true,opacity,depthWrite:false}));o.position.z=z;scene.add(o)}
  ground(3.1,5.9,'#03070b',.55,.02);ground(3.8,6.3,'#4296ff',.15,.01);
- const projection=new THREE.Matrix4(),local=new THREE.Matrix4(),translation=new THREE.Matrix4(),scale=new THREE.Matrix4(),rotation=new THREE.Matrix4();
- return {id:'ego-car',type:'custom',renderingMode:'3d',position:at(START),heading:chaseHeading(START),
- onAdd(m,gl){
-  this.camera=new THREE.Camera();this.closeCamera=new THREE.PerspectiveCamera(40,1,.1,100);
-  this.renderer=new THREE.WebGLRenderer({canvas:m.getCanvas(),context:gl,antialias:true});this.renderer.autoClear=false;this.map=m;
- },
- render(gl,matrix){
-  const r=this.renderer;r.resetState();
-  if(worldScaleCar){
-   const mc=maplibregl.MercatorCoordinate.fromLngLat(this.position,0),s=mc.meterInMercatorCoordinateUnits();
-   local.copy(translation.makeTranslation(mc.x,mc.y,mc.z)).multiply(scale.makeScale(s,-s,s)).multiply(rotation.makeRotationZ(-this.heading*RAD));
-   this.camera.projectionMatrix.copy(projection.fromArray(matrix)).multiply(local);car.rotation.z=0;r.render(scene,this.camera);
-  }else{
-   // Dedicated ego presentation camera keeps a true-sized 4.7m model legible (~9% VW)
-   // without pretending it has the same survey scale as the surrounding map.
-   const width=this.map.getContainer().clientWidth,height=this.map.getContainer().clientHeight,p=this.map.project(this.position);
-   const vw=Math.min(width*.34,560),vh=Math.min(height*.50,480),camera=this.closeCamera;
-   camera.aspect=vw/vh;camera.updateProjectionMatrix();
-   const dist=(1.94*vh)/(2*Math.tan(camera.fov*RAD/2)*width*CHASE.carScreenWidth);
-   const angle=(90-CHASE.pitch+6)*RAD;camera.position.set(0,-dist*Math.cos(angle),.68+dist*Math.sin(angle));camera.up.set(0,0,1);camera.lookAt(0,0,.68);
-   car.rotation.z=-angleDelta(this.map.getBearing(),this.heading)*RAD;
-   const ratio=gl.drawingBufferWidth/width;
-   r.setViewport((p.x-vw/2)*ratio,(height-p.y-vh/2)*ratio,vw*ratio,vh*ratio);
-   r.clearDepth();r.render(scene,camera);
-   r.setViewport(0,0,gl.drawingBufferWidth,gl.drawingBufferHeight);
-  }
-  r.resetState();
+
+ return scene;
+}
+function makeAlert(r){
+ const c=document.createElement('canvas');c.width=c.height=192;const x=c.getContext('2d');x.fillStyle='#111923';x.strokeStyle=r.type==='police'?'#8aa9d1':'#d8bd8b';x.lineWidth=5;x.beginPath();x.roundRect(22,20,148,148,28);x.fill();x.stroke();x.fillStyle=r.type==='police'?'#bbd4f6':'#efd2a0';x.font='82px Arial';x.textAlign='center';x.fillText(r.icon,96,127);const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),transparent:true,depthTest:true,fog:true}));sprite.position.copy(frameAt(r.d,4.1,3.2));sprite.scale.set(2.6,2.6,1);scene.add(sprite);reportSprites.push(sprite);
+}
+function mergeStatic(){
+ const groups=new Map();scene.updateMatrixWorld(true);
+ for(const object of [...scene.children]){
+  if(!object.isMesh||blueSegments.includes(object)||Array.isArray(object.material))continue;
+  const material=object.material;let record=groups.get(material.uuid);if(!record){record={material,position:[],normal:[],uv:[],color:[],colored:!!object.geometry.attributes.color};groups.set(material.uuid,record)}
+  let g=object.geometry.clone();if(g.index)g=g.toNonIndexed();g.applyMatrix4(object.matrixWorld);
+  const count=g.attributes.position.count;
+  for(const key of ['position','normal','uv','color']){const source=g.attributes[key];if(source)for(const value of source.array)record[key].push(value);else if(key==='normal')for(let i=0;i<count;i++)record.normal.push(0,0,1)}
+  scene.remove(object);g.dispose();object.geometry.dispose();
  }
- };
+ for(const data of groups.values()){
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(data.position,3));g.setAttribute('normal',new THREE.Float32BufferAttribute(data.normal,3));if(data.uv.length===data.position.length/3*2)g.setAttribute('uv',new THREE.Float32BufferAttribute(data.uv,2));if(data.colored)g.setAttribute('color',new THREE.Float32BufferAttribute(data.color,3));g.computeBoundingSphere();scene.add(new THREE.Mesh(g,data.material));
+ }
 }
-function draw(t){if(!ready)return;virtualTime=t;const d=START+Math.min(t,70)*SPEED;
- carLayer.position=smoothPosition(d);carLayer.heading=chaseHeading(d);
- map.jumpTo(cameraOptions(d));
- // Worker GeoJSON updates are capped at 8Hz; map/car movement remains every frame.
- if(t<lastRouteUpdate || t-lastRouteUpdate>=.125){map.getSource('active-route').setData(line(slicePath(d)));lastRouteUpdate=t}
- const remain=Math.max(0,cumulative.at(-1)-d);$('distanceValue').textContent=remain>=1000?(remain/1000).toFixed(1)+' ק״מ':Math.round(remain/10)*10+' מ׳';
- $('minutesValue').textContent=Math.max(1,Math.ceil(remain/SPEED/60))+' דק׳';$('etaValue').textContent='12:'+String(8+Math.ceil(remain/SPEED/60)).padStart(2,'0');$('speedValue').textContent=Math.round(38+Math.sin(t*.45)*1.2);
- const lastTurn=route.legs.flatMap(l=>l.steps).find(s=>s.maneuver.type==='end of road');
- const td=lastTurn?Math.max(0,cumulative.at(-1)-40-d):remain;
- $('turnDistance').textContent=Math.round(td/10)*10+' מ׳';$('turnName').textContent='שמאלה ל'+(lastTurn?.name || 'כיכר הבימה');
- const alert=reports.find(r=>r.d>d) || reports.at(-1),ad=Math.max(0,Math.round((alert.d-d)/10)*10);
- $('alertTitle').textContent=alert.title+' דווחה בעוד '+ad+' מ׳';$('alertDetail').textContent='הדגמה · אושר ע״י '+alert.confirmed+' נהגים';$('alertIcon').textContent=alert.icon;
- map.triggerRepaint();if(recording)paintCapture();
+function updateHUD(t,d){
+ const remaining=Math.max(0,cumulative.at(-1)-d),td=Math.max(0,remaining-40),next=route.legs.flatMap(l=>l.steps).find(s=>s.maneuver.type==='end of road');
+ $('turnDistance').textContent=Math.round(td/10)*10+' מ׳';$('turnName').textContent='שמאלה ל'+(next?.name||'כיכר הבימה');$('speedValue').textContent=Math.round(SPEED*3.6+Math.sin(t*.4));$('minutesValue').textContent=Math.max(1,Math.ceil(remaining/SPEED/60))+' דק׳';$('distanceValue').textContent=Math.round(remaining/10)*10+' מ׳';$('etaValue').textContent='12:30';
+ const r=reports.find(r=>r.d>d)||reports.at(-1),ahead=Math.max(0,Math.round((r.d-d)/5)*5);$('alertTitle').textContent=r.title+' · בעוד '+ahead+' מ׳';$('alertDetail').textContent='הדגמה · אושר ע״י '+r.confirmed+' נהגים';$('alertIcon').textContent=r.icon;
 }
-let last=null,startTime=null,paused=false;
-function animate(now){if(!paused && ready){if(startTime===null)startTime=now;let t=(now-startTime)/1000;draw(t%60)}last=now;requestAnimationFrame(animate)}
+function draw(t){
+ if(!ready)return;virtualTime=t;const d=START+Math.min(t,60)*SPEED;
+ ego.position.copy(position(d));ego.rotation.z=-heading(d);
+ const c=cameraFrame(d);camera.position.copy(c.position);camera.up.set(0,0,1);camera.lookAt(c.target);
+ for(const item of traffic){let station=item.start+item.speed*t;if(item.speed<0 && station<d-25)station=d+85+((t*3)%35);item.mesh.position.copy(frameAt(station,item.lane,0));item.mesh.rotation.z=-heading(station)+(item.speed<0?Math.PI:0)}
+ updateBlue(d);updateHUD(t,d);renderer.render(scene,camera);if(recording)paintCapture();
+}
+function animate(now){if(ready&&!paused){if(startTime===null)startTime=now;draw(((now-startTime)/1000)%60)}last=now;requestAnimationFrame(animate)}
 async function boot(){
- const [base,data]=await Promise.all([fetch('./base-style.json').then(r=>r.json()),fetch('./route.json').then(r=>r.json())]);route=data.routes[0];path=route.geometry.coordinates;cumulative=[0];for(let i=1;i<path.length;i++)cumulative.push(cumulative[i-1]+distance(path[i-1],path[i]));
- map=new maplibregl.Map({container:'map',style:makeStyle(base),...cameraOptions(START),antialias:true,preserveDrawingBuffer:true,attributionControl:true,fadeDuration:0,maxPitch:CHASE.maxPitch,interactive:true});window.demoMap=map;
- // MapLibre 4.7 lacks the public FOV setter; guarded enhancement on newer runtimes.
- if(typeof map.setVerticalFieldOfView==='function')map.setVerticalFieldOfView(CHASE.verticalFov);
- map.on('error',e=>console.warn('map',e.error?.message));
- await new Promise(resolve=>map.once('load',resolve));
- map.addSource('active-route',{type:'geojson',data:line(slicePath(START))});
- const before=map.getStyle().layers.find(l=>l.type==='fill-extrusion')?.id;
- // Optional and data-led: no invented lane counts when the tile schema omits them.
- map.addLayer({id:'mapped-lane-divider',type:'line',source:'openmaptiles','source-layer':'transportation',minzoom:18,
-  filter:['all',['in',['get','class'],['literal',['primary','secondary','tertiary','trunk','motorway']]],['>=',['to-number',['get','lanes'],0],2]],
-  layout:{'line-cap':'butt','line-join':'round'},paint:{'line-color':'#cad0d5','line-opacity':.30,'line-width':1.1,'line-dasharray':[5,8],
-   'line-offset':['interpolate',['linear'],['zoom'],18,4,20,12]}},before);
- for(const l of [{id:'route-glow-wide',color:'#1676ff',width:21,blur:10,opacity:.25},{id:'route-glow',color:'#2683ff',width:12,blur:5,opacity:.55},{id:'route-ribbon',color:'#318bff',width:6,blur:0,opacity:1},{id:'route-highlight',color:'#90c5ff',width:1.3,blur:.4,opacity:.9}])map.addLayer({id:l.id,type:'line',source:'active-route',layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':l.color,'line-width':l.width,'line-blur':l.blur,'line-opacity':l.opacity}},before);
- carLayer=makeCarLayer();map.addLayer(carLayer);
- for(const r of reports){const el=document.createElement('div');el.className='pin'+(r.type==='police'?' blue':'');el.innerHTML='<span class="pin-label">דיווח הדגמה</span>'+r.icon;r.marker=new maplibregl.Marker({element:el,anchor:'bottom',offset:[0,-12]}).setLngLat(at(r.d)).addTo(map)}
- // Hebrew glyphs are rendered natively in the HUD; the map's road text uses OSM local names.
- $('loading').style.display='none';ready=true;window.demoReady=true;window.renderDemoFrame=t=>{paused=true;draw(t);return new Promise(r=>map.once('render',r))};
- requestAnimationFrame(animate);if(new URLSearchParams(location.search).has('record'))setTimeout(recordDemo,5500);
+ const [r,data]=await Promise.all([fetch('./route.json').then(r=>r.json()),fetch('./street-data.json').then(r=>r.json())]);route=r.routes[0];origin=route.geometry.coordinates[0];path=route.geometry.coordinates.map(xy);streetData=data;cumulative=[0];for(let i=1;i<path.length;i++)cumulative.push(cumulative[i-1]+path[i].distanceTo(path[i-1]));
+ scene=new THREE.Scene();scene.background=new THREE.Color('#080b10');scene.fog=new THREE.Fog('#080b10',35,125);
+ scene.add(new THREE.HemisphereLight(0xe7efff,0x151d29,1.05));const sun=new THREE.DirectionalLight(0xffffff,1.2);sun.position.set(-20,-15,45);scene.add(sun);
+ const ground=new THREE.Mesh(new THREE.PlaneGeometry(5000,5000),new THREE.MeshBasicMaterial({color:'#0d1117'}));ground.position.z=-.06;scene.add(ground);
+ camera=new THREE.PerspectiveCamera(FSD.fov,innerWidth/innerHeight,.1,240);camera.up.set(0,0,1);
+ renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true,powerPreference:'high-performance'});renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.5));renderer.setSize(innerWidth,innerHeight);renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.1;renderer.outputColorSpace=THREE.SRGBColorSpace;$('map').appendChild(renderer.domElement);
+ makeRoad();makeBuildings();mergeStatic();ego=makeVehicle();scene.add(ego);
+ for(const item of [{start:START+26,speed:11.2,lane:LANE,color:'#9ea7b2'},{start:START+54,speed:10.0,lane:0,color:'#c6cbd2'},{start:START+84,speed:-9,lane:-LANE,color:'#c6cbd2'},{start:START+142,speed:-10,lane:-LANE,color:'#7c8793'}]){item.mesh=makeVehicle(item.color);scene.add(item.mesh);traffic.push(item)}
+ reports.forEach(makeAlert);ready=true;window.demoReady=true;window.demoScene=scene;window.demoCamera=camera;window.demoRenderer=renderer;
+ window.renderDemoFrame=async t=>{paused=true;draw(t);return true};window.fsdStats={cameraHeight:FSD.height,cameraBehind:FSD.behind,laneWidth:LANE,lanes:3,carLength:4.7,buildings:streetData.buildings.length,roadLayouts:'illustrative',objects:'simulated'};
+ $('loading').style.display='none';draw(0);requestAnimationFrame(animate);if(new URLSearchParams(location.search).has('record'))setTimeout(recordDemo,1800);
+ addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);draw(virtualTime)});
 }
 $('report').onclick=()=>{$('reportMenu').style.display=$('reportMenu').style.display==='flex'?'none':'flex'};
-for(const b of document.querySelectorAll('[data-report]'))b.onclick=()=>{$('reportMenu').style.display='none';$('notice').textContent='הדגמה בלבד · דיווח '+b.dataset.report+' לא נשלח';$('notice').style.display='block';setTimeout(()=>$('notice').style.display='none',2800)};
-/* Canvas-native HUD for an actual in-browser recording, not AI footage.
-   The display uses HTML for accessibility; the export redraws the same HUD over the live WebGL canvas. */
-let capture,ctx;
-function roundRect(x,y,w,h,r=20,color='#111821f2'){ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fillStyle=color;ctx.fill();ctx.strokeStyle='#ffffff17';ctx.lineWidth=1;ctx.stroke()}
+for(const b of document.querySelectorAll('[data-report]'))b.onclick=()=>{$('reportMenu').style.display='none';$('notice').textContent='הדגמה בלבד · דיווח '+b.dataset.report+' לא נשלח';$('notice').style.display='block';setTimeout(()=>$('notice').style.display='none',2400)};
+function roundRect(x,y,w,h,r=16,color='#101720ef'){ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fillStyle=color;ctx.fill();ctx.strokeStyle='#ffffff17';ctx.lineWidth=1;ctx.stroke()}
 function text(s,x,y,size=20,color='#f5f7fa',weight=500,align='right'){ctx.font=`${weight} ${size}px Heebo,Arial`;ctx.fillStyle=color;ctx.textAlign=align;ctx.direction='rtl';ctx.fillText(s,x,y)}
-function paintCapture(){if(!ctx)return;const W=1600,H=900;ctx.clearRect(0,0,W,H);ctx.drawImage(map.getCanvas(),0,0,W,H);
- const grad=ctx.createLinearGradient(0,0,0,H);grad.addColorStop(0,'#10151d88');grad.addColorStop(.25,'#10151d00');grad.addColorStop(.7,'#10151d00');grad.addColorStop(1,'#10151d55');ctx.fillStyle=grad;ctx.fillRect(0,0,W,H);
- // Marker DOM does not appear in a canvas capture: place its screen-projected equivalent.
- for(const r of reports){const p=map.project(at(r.d)),sx=p.x/map.getCanvas().clientWidth*W,sy=p.y/map.getCanvas().clientHeight*H;
-  if(sx>20 && sx<W-20 && sy>70 && sy<H-120){roundRect(sx-23,sy-64,46,46,12,'#202b39');text(r.icon,sx,sy-33,25,'#eabe72',500,'center');text('הדגמה',sx,sy-73,11,'#a2b3c5',400,'center')}
- }
- text('דרך',1510,65,29,'#f5f7fa',800);text('ניווט קהילתי · ישראל',1510,87,13,'#91a0b0');roundRect(1130,38,185,28,7,'#a278341d');text('הדגמה · נתוני קהילה מדומים',1305,58,11,'#e0bd78');
- roundRect(1192,110,368,177);text('↰',1528,186,66,'white',500);text($('turnDistance').textContent,1455,164,37,'#f5f7fa',700);text($('turnName').textContent,1455,204,20);text('ממשיכים בשדרות רוטשילד',1455,243,13,'#8e9dac');
- roundRect(1192,310,368,92);text($('alertIcon').textContent,1527,365,28,'#efbd6a');text($('alertTitle').textContent,1480,345,18);text($('alertDetail').textContent,1480,373,13,'#95a5b6');
- roundRect(40,38,305,49,12);text('תל אביב–יפו · שדרות רוטשילד',325,70,15,'#c5cfda');
- roundRect(40,615,124,124,22);text($('speedValue').textContent,102,690,58,'#f5f7fa',600,'center');text('קמ״ש',102,716,13,'#9cabb9',400,'center');ctx.beginPath();ctx.arc(211,676,25,0,Math.PI*2);ctx.fillStyle='white';ctx.fill();ctx.lineWidth=5;ctx.strokeStyle='#e9645d';ctx.stroke();text('50',211,684,22,'#252a30',700,'center');
- roundRect(40,763,1520,103);text('כיכר הבימה',1500,805,21,'#f5f7fa',600);text('תל אביב–יפו · מסלול הדגמה',1500,833,13,'#93a2b3');
- for(const [x,val,label] of [[970,$('etaValue').textContent,'הגעה משוערת'],[800,$('minutesValue').textContent,'זמן נסיעה'],[620,$('distanceValue').textContent,'נותרו ליעד']]){text(val,x,804,26,'#f5f7fa',600);text(label,x,832,12,'#96a4b4')}
- roundRect(67,786,208,55,13,'#24416c77');text('דיווח קהילתי  ⚑',254,821,19,'#d6e7ff');text('© OpenStreetMap contributors · OpenFreeMap · OSRM | נסיעה ודיווחי קהילה מדומים',1560,888,10,'#8a98a8');
+function paintCapture(){
+ if(!ctx)return;ctx.clearRect(0,0,1600,900);ctx.drawImage(renderer.domElement,0,0,1600,900);
+ text('דרך',1540,48,24,'#f5f7fa',800);text('תצוגת הדגמה · לא מידע מחיישני הרכב',1540,71,12,'#94a1af');
+ roundRect(1250,99,310,113);text('↰',1535,160,48);text($('turnDistance').textContent,1470,140,27,'#f5f7fa',700);text($('turnName').textContent,1470,174,18);text('שדרות רוטשילד · תל אביב',1470,197,11,'#91a0b1');
+ roundRect(1250,228,310,65);text($('alertTitle').textContent,1537,255,16);text($('alertDetail').textContent,1537,279,11,'#bba77e');
+ roundRect(35,35,293,40,10);text('תל אביב · נתיבים ותנועה מדומים',310,61,13,'#a0afbf');
+ roundRect(35,675,110,114,18);text($('speedValue').textContent,90,742,52,'#f5f7fa',600,'center');text('קמ״ש',90,769,12,'#8e9aaa',400,'center');ctx.beginPath();ctx.arc(184,735,23,0,Math.PI*2);ctx.fillStyle='white';ctx.fill();ctx.strokeStyle='#d96565';ctx.lineWidth=4;ctx.stroke();text('50',184,742,21,'#26303b',700,'center');
+ roundRect(35,811,1530,66,17);text('כיכר הבימה',1529,840,19,'#f5f7fa',600);text('מסלול אמיתי · הדמיית נסיעה',1529,862,11,'#8c9aab');
+ text($('distanceValue').textContent+'   ·   '+$('minutesValue').textContent+'   ·   הגעה '+$('etaValue').textContent,1000,851,21,'#dce3eb');roundRect(60,826,180,38,10,'#284c7c66');text('דיווח קהילתי  ⚑',222,852,16,'#d0e3ff');
+ text('© OpenStreetMap contributors · OpenFreeMap · OSRM | תנועה, נתיבים, מעברי חציה ודיווחי קהילה הם הדמיה',1560,895,9,'#7b8796');
 }
 async function recordDemo(){
- if(recording||!ready)return;await document.fonts.ready;paused=true;draw(0);await new Promise(r=>setTimeout(r,1400));
- capture=document.createElement('canvas');capture.width=1600;capture.height=900;ctx=capture.getContext('2d');recording=true;
- const stream=capture.captureStream(30);const types=['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];const mimeType=types.find(t=>MediaRecorder.isTypeSupported(t));const rec=new MediaRecorder(stream,{mimeType,videoBitsPerSecond:14000000});const chunks=[];
- rec.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};rec.onstop=()=>{const blob=new Blob(chunks,{type:mimeType}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='nav-demo.webm';a.click();recording=false;$('record').textContent='ההקלטה מוכנה';window.recordingDone=true};
- paintCapture();rec.start(1000);const begin=performance.now();$('record').textContent='מקליט…';function step(){const t=(performance.now()-begin)/1000;draw(Math.min(t,DURATION));if(t<DURATION)requestAnimationFrame(step);else rec.stop()}requestAnimationFrame(step);
+ if(!ready||recording)return;await document.fonts.ready;paused=true;draw(0);await new Promise(r=>setTimeout(r,500));capture=document.createElement('canvas');capture.width=1600;capture.height=900;ctx=capture.getContext('2d');recording=true;
+ const mimeType=['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'].find(t=>MediaRecorder.isTypeSupported(t));const recorder=new MediaRecorder(capture.captureStream(30),{mimeType,videoBitsPerSecond:16000000}),chunks=[];
+ recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};recorder.onstop=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(chunks,{type:mimeType}));a.download='nav-demo.webm';a.click();recording=false;window.recordingDone=true;$('record').textContent='ההקלטה מוכנה'};
+ paintCapture();recorder.start(1000);$('record').textContent='מקליט…';const start=performance.now();function frame(){const t=Math.min((performance.now()-start)/1000,DURATION);draw(t);if(t<DURATION)requestAnimationFrame(frame);else recorder.stop()}requestAnimationFrame(frame);
 }
 $('record').onclick=recordDemo;
-boot().catch(e=>{$('loading').innerHTML='<div>טעינת המפה נכשלה. נדרש חיבור לאינטרנט.<br><small>'+e.message+'</small></div>';console.error(e)});
+boot().catch(e=>{console.error(e);$('loading').textContent='טעינת ההדגמה נכשלה: '+e.message});

@@ -1,52 +1,50 @@
-# דרך — Tel Aviv navigation visualization prototype
+# דרך — street-level FSD-inspired navigation prototype (v4)
 
-Standalone browser demo, no build process. Serve the folder over HTTP, e.g.:
+Standalone browser demo, no build step:
 
     python3 -m http.server 8768 --directory /workspace/nav-demo
 
-Open http://127.0.0.1:8768/ at 1600×900. CDN internet access is required.
+Open http://127.0.0.1:8768/ at 1600×900. Only three.js and the optional web font need CDN access; the actual route and street geometry are cached locally.
 
-- Actual OSM footprints, roads and mapped building heights: OpenFreeMap vector tiles (ODbL attribution in map and recording).
-- Real 1,451.5m driving route on Rothschild Boulevard to Habima, OSRM public demo server, downloaded in `route.json`.
-- Heights absent in OSM/tiles fall back to provider estimates / 12m, not surveyed heights.
-- Motion, vehicle, speed/ETA, reports and report confirmations are SIMULATED.
-- No Tesla assets, sensors, CAN, microphone, account or location access. Reporting buttons only show a local toast.
-- Gray 3D buildings with directional lighting; blue route glow; three.js primitive car; Hebrew RTL HUD.
-- No data is sent to a reporting backend. Map/CDN requests disclose IP normally.
-- The vehicle begins 530m along the real route, travels at 10.5m/s (~38km/h), and loops the presentation after 60s.
+## This revision
 
-## Record in the browser
+The former MapLibre aerial camera and independent, enlarged ego overlay are **removed**. One ordinary three.js perspective camera renders the road, ego, other vehicles, buildings and alert sprites together, in metre units with real depth occlusion.
 
-Click “הקלטת הדגמה · 24 שניות”, or open `/?record=1`. The page records its actual map rendering plus a canvas-native version of the Hebrew HUD into `nav-demo.webm` and automatically downloads it. The recording is not AI-generated. Map marker HTML is reprojected into the export canvas.
+- Default camera: **7.8m behind, 2.35m above ground**, 52° vertical FOV, looking forward 43m at a target height of 1.1m. This is a low, nearly horizontal in-street view, not the earlier elevated proposal. The SUV sits at the bottom centre; white lane lines converge toward a dark, fogged horizon.
+- True-scale, rounded white SUV: approximately **4.70m long / 1.90m body width / 1.65m roof height**, with dark cabin glass, mirrors, wheels, door details and red rear lights. No Tesla branding or downloaded vehicle assets.
+- Procedural asphalt strip along the actual driving route, with **three 3.3m lanes**, solid white edges, dashed dividers with faint halos, raised curb strips and a translucent blue 1.78m-wide ego-lane path.
+- Four simulated vehicles: same-direction traffic in the ego/right lane, and two oncoming vehicles in the left lane. Their speeds are illustrative, not detected from sensors.
+- Crosswalks, stop lines and green signals are simulated at real cross-street locations computed from OSM geometry. They do **not** describe the verified real-world signal state or exact road layout.
+- Compact Hebrew RTL HUD, community report buttons, clearly simulated alerts, speed/limit and ETA. The report button sends nothing externally.
+- Real smooth-gray OSM buildings rise on both sides, fading into darkness beyond roughly 35–125m. One merged building mesh and merged static road furniture reduce draw calls. Route position uses C1 interpolation and camera direction a spatially smoothed tangent, not noisy per-segment rotation.
 
-Convert after downloading:
+## Data and accuracy
 
-    ffmpeg -y -i nav-demo.webm -r 30 -c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p -movflags +faststart /workspace/nav-demo/nav-demo.mp4
-    ffmpeg -y -ss 3 -i /workspace/nav-demo/nav-demo.mp4 -frames:v 1 /workspace/nav-demo/still-01.png
-    ffmpeg -y -ss 18 -i /workspace/nav-demo/nav-demo.mp4 -frames:v 1 /workspace/nav-demo/still-02.png
+- Actual OSRM driving route, 1.45km along Rothschild Boulevard to Habima, saved in `route.json`.
+- Actual OpenStreetMap building footprints/heights and roads from OpenFreeMap's public `20261101` vector-tile snapshot, saved in `street-data.json`. 323 nearby building pieces are retained in a narrow corridor. Some heights are provider estimates, not surveyed values. Buildings within 5.5m of the route were omitted to avoid clipping the illustrative widened roadway.
+- The tile schema supplied **no `lanes` tags**. Three lanes and a left oncoming lane are therefore explicit **visualization defaults**, not a claim about Rothschild's actual lane count/direction. Faint side roads use actual geometry, while their surfaces at selected crossings are simplified.
+- Crosswalk paint, stop lines, signals, moving objects, community reports, confirmations, speed and ETA are **demonstration data**. This is not an implementation of Tesla FSD, vehicle perception, autonomous driving, lane-level guidance or a safe navigation product.
+- No Tesla logo/assets; no GPS, CAN, microphone or account access. No backend reports. CDN access discloses the normal request metadata.
+- OSM attribution/ODbL acknowledgement is shown in the page and export. Retain the OSM attribution and offer the derivative street geometry under ODbL when distributing it.
 
-For deterministic capture by an approved browser tool, the page exports `window.demoReady` and `window.renderDemoFrame(seconds)` (wait for the map's render event). The latter pauses the real-time animation. HTML HUD is fully capturable by screenshot; 720 frames at 30fps makes 24 seconds. Avoid recording during initial tile load. A visual review of the result is still needed.
+## Recording
 
-## Current validation status
+Click the recording button, or open `/?record=1`. The page records **24 seconds** of its actual WebGL scene plus a canvas-native Hebrew HUD at **1600×900 / 30fps** and downloads `nav-demo.webm`.
 
-`node --check app.js` passed. Browser/GPU rendering has NOT been run or visually reviewed in this executor environment; no browser-driving tools are available here. Do not represent a video/still as completed until a browser worker renders and reviews it.
+    ffmpeg -y -i nav-demo.webm -r 30 -c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p -movflags +faststart nav-demo.mp4
 
+For a sanctioned browser worker, `window.demoReady`, `window.renderDemoFrame(seconds)`, `window.demoScene`, `window.demoCamera`, `window.demoRenderer` and `window.fsdStats` are available. `renderDemoFrame` pauses real-time playback and renders immediately. Static geometry is locally cached, so there is no tile-load timing dependency after initial load.
 
-## Tight FSD-style chase view revision
-
-- Map camera: zoom **19.18**, pitch **76°**, maximum pitch **85°**. A 35% top inset anchors the ego at **67.5% of the screen height**, above the bottom HUD. No per-frame easing animations are queued.
-- Camera and vehicle share a weighted 20m route-heading filter; positions use local C1 Hermite interpolation. These are arc-distance based, so seeking/re-recording yields the same orientation without frame-rate-dependent lag.
-- New detailed white sedan: **4.70m physical body length**, beveled body and bumpers, dark outward-facing window glass, roof, pillars, mirrors, handles/door seams, LED strips and five-spoke wheels. No external model or texture downloads.
-- **Presentation-scale caveat:** at zoom 19.18, a real 1.9m-wide sedan in the same map projection cannot fill 8–12% of a 1600px display. The default therefore uses a separate, lower three.js ego camera rendering the true-sized model as a screen-anchored visualization glyph (target width ~9%, somewhat wider with mirrors). It is not survey-scale relative to nearby buildings. This is explicit, rather than silently scaling the metre geometry up by 8×. Add `?worldscale=1` for exact map-scale placement, at the cost of a much smaller car. Can combine with `?worldscale=1&record=1`.
-- Ego camera uses a 40° vertical FOV, soft radial contact shadow and subtle blue underglow. The map uses the public 45° FOV setter only if supported by its runtime; no private MapLibre transform fields are mutated. With the pinned MapLibre 4.7.1, the native map FOV is retained.
-- Buildings are lighter neutral gray with less directional contrast and vertical-gradient shading enabled; existing antialiasing softens edges. Geometry is still actual OSM footprints, not beveled fake blocks.
-- Optional dashed markings render only on major roads whose vector tile explicitly has `lanes >= 2`. OpenFreeMap may omit this field, in which case no lane layout is invented. Markings are illustrative, not lane-level navigation.
-- Route geometry worker updates are capped at 8Hz, while the vehicle/camera move every animation frame. Reused matrices/materials and one 64px radial texture keep the ego layer lightweight.
-
-### Static validation of this revision
+## Checks
 
     node --check app.js
     node test-static.cjs
-    curl -fsS http://127.0.0.1:8768/app.js
+    curl -fsS http://127.0.0.1:8768/app.js?v=4
 
-Unit checks cover 1,801 virtual frames, finite positions/headings, frame-to-frame motion, angular wrap, deterministic seeks and retained building gradient. This revision has **not** been browser-rendered or visually reviewed. The existing `still.png` / recording are from before this revision and were not overwritten.
+`test-static.cjs` uses three.js scene/math in Node with a renderer stub; it is **not** a browser test. It verifies the actual default camera height/separation, 721 route positions and actual scene construction. Test helper dependencies live outside the publishable demo at `/workspace/nav-demo-tools/`.
+
+### Verification image
+
+`fsd-check.png` is a **native offscreen EGL/llvmpipe render** of the actual scene mesh geometry, transforms and camera exported by the Node check at t=3s. It was visually inspected. The native renderer approximates three.js lighting/materials and adds a matching HUD; it is **not a Chromium screenshot**, and textured alert sprites are omitted in that native preview. Native verification scripts are `/workspace/nav-demo-tools/render-check.py` and `/workspace/nav-demo-tools/scene-check.json`.
+
+No browser automation was available to this executor, so browser/GPU rendering and the new recording still need verification by the parent browser worker. Existing MP4s / older stills in this directory were not regenerated or overwritten. No GitHub changes were made.
