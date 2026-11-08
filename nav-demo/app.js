@@ -4,6 +4,21 @@ const $=id=>document.getElementById(id),RAD=Math.PI/180,START=530,SPEED=10.5,DUR
 const FSD={height:2.35,behind:7.8,fov:52,lookAhead:43,lookHeight:1.1,roadWidth:9.9};
 let renderer,scene,camera,ego,path,cumulative,route,origin,streetData,ready=false,recording=false,virtualTime=0,shadowTexture;
 let capture,ctx,paused=false,startTime=null,last=null;
+const deviceInfo=typeof navigator==='undefined'?{}:navigator;
+const lowEnd=(deviceInfo.hardwareConcurrency||8)<=4 || (deviceInfo.deviceMemory||8)<=4;
+let view={width:1600,height:900,portrait:false,phoneLandscape:false,pixelRatio:1,behind:FSD.behind,fov:FSD.fov,shift:0};
+let effectiveDprCap=lowEnd?1.5:2,frameCount=0,frameTotal=0;
+function viewportSize(){const vv=typeof visualViewport==='undefined'?null:visualViewport;return {width:Math.max(1,Math.round(vv?.width||innerWidth)),height:Math.max(1,Math.round(vv?.height||innerHeight))}}
+function configureView(){
+ const {width,height}=viewportSize(),portrait=width<=600&&height>width,phoneLandscape=height<=500&&width>height;
+ view={width,height,portrait,phoneLandscape,pixelRatio:Math.min(devicePixelRatio||1,effectiveDprCap),behind:portrait?12:phoneLandscape?10.8:FSD.behind,fov:portrait?70:phoneLandscape?58:FSD.fov,shift:portrait?.055:0};
+ camera.aspect=width/height;camera.fov=view.fov;camera.clearViewOffset();if(view.shift)camera.setViewOffset(width,height,0,-height*view.shift,width,height);camera.updateProjectionMatrix();
+ renderer.setPixelRatio(view.pixelRatio);renderer.setSize(width,height);
+ if(window.fsdStats)Object.assign(window.fsdStats,{viewport:[width,height],pixelRatio:view.pixelRatio,portrait,phoneLandscape,cameraBehind:view.behind});
+}
+function monitorPerformance(now){
+ if(last!==null&&!paused&&!recording){const elapsed=now-last;if(elapsed<200){frameTotal+=elapsed;frameCount++;if(frameCount>=90){const mean=frameTotal/frameCount;if(mean>36&&effectiveDprCap>1.15){effectiveDprCap=Math.max(1,effectiveDprCap-.25);configureView()}frameTotal=0;frameCount=0}}}
+}
 const traffic=[],reportSprites=[],blueSegments=[];
 const reports=[{d:START+65,title:'משטרה',icon:'♧',confirmed:3,type:'police'},{d:START+150,title:'מפגע',icon:'△',confirmed:2,type:'hazard'},{d:START+245,title:'עבודות בכביש',icon:'⚒',confirmed:5,type:'works'}];
 const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
@@ -14,7 +29,7 @@ function position(d){const step=2,d0=Math.floor(d/step)*step,u=(d-d0)/step,p0=at
 function tangent(d,window=3){return position(d+window).sub(position(d-window)).normalize()}
 function heading(d){const v=tangent(d,7);return Math.atan2(v.x,v.y)}
 function frameAt(d,offset=0,z=0){const p=position(d),t=tangent(d);return p.add(new THREE.Vector3(t.y,-t.x,0).multiplyScalar(offset)).setZ(z)}
-function cameraFrame(d){const p=position(d),forward=tangent(d,12);return {position:p.clone().addScaledVector(forward,-FSD.behind).setZ(FSD.height),target:p.clone().addScaledVector(forward,FSD.lookAhead).setZ(FSD.lookHeight)}}
+function cameraFrame(d){const p=position(d),forward=tangent(d,12);return {position:p.clone().addScaledVector(forward,-view.behind).setZ(FSD.height),target:p.clone().addScaledVector(forward,FSD.lookAhead).setZ(FSD.lookHeight)}}
 function ribbon(start,end,left,right,z,material,step=1.5){
  const points=[],normal=[],uv=[];const segments=Math.max(1,Math.ceil((end-start)/step));
  for(let i=0;i<segments;i++){
@@ -52,22 +67,27 @@ function makeRoad(){
  }
  // Dynamic ego-lane path uses an actual road-width strip in the same perspective.
  const blueMat=new THREE.MeshBasicMaterial({color:'#2584ff',transparent:true,opacity:.40,depthWrite:false,side:THREE.DoubleSide});
- for(let i=0;i<85;i++){const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(new Float32Array(18),3));g.setAttribute('normal',new THREE.Float32BufferAttribute([0,0,1,0,0,1,0,0,1,0,0,1,0,0,1,0,0,1],3));const m=new THREE.Mesh(g,blueMat);m.frustumCulled=false;scene.add(m);blueSegments.push(m)}
+ const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(new Float32Array(85*18),3));const normals=new Float32Array(85*18);for(let i=2;i<normals.length;i+=3)normals[i]=1;g.setAttribute('normal',new THREE.Float32BufferAttribute(normals,3));const m=new THREE.Mesh(g,blueMat);m.frustumCulled=false;scene.add(m);blueSegments.push(m);
 }
 function updateBlue(d){
- for(let i=0;i<blueSegments.length;i++){
-  const a=d+2.8+i,b=a+1,w=.89;const p=[frameAt(a,-w,.065),frameAt(a,w,.065),frameAt(b,-w,.065),frameAt(b,w,.065)],arr=blueSegments[i].geometry.attributes.position.array;
-  let n=0;for(const k of [0,1,2,2,1,3]){arr[n++]=p[k].x;arr[n++]=p[k].y;arr[n++]=p[k].z}blueSegments[i].geometry.attributes.position.needsUpdate=true;
+ const attribute=blueSegments[0].geometry.attributes.position,arr=attribute.array;let n=0;
+ for(let i=0;i<85;i++){
+  const a=d+2.8+i,b=a+1,w=.89,p=[frameAt(a,-w,.065),frameAt(a,w,.065),frameAt(b,-w,.065),frameAt(b,w,.065)];
+  for(const k of [0,1,2,2,1,3]){arr[n++]=p[k].x;arr[n++]=p[k].y;arr[n++]=p[k].z}
  }
+ attribute.needsUpdate=true;
 }
+
 function makeBuildings(){
- const pos=[],norm=[],color=[];
- for(const b of streetData.buildings){if(b.ring.length<4)continue;const vertices=b.ring.slice(0,-1).map(xy);const shape=new THREE.Shape(vertices.map(p=>new THREE.Vector2(p.x,p.y)));let g=new THREE.ExtrudeGeometry(shape,{depth:clamp(Number(b.height)||12,5,90),bevelEnabled:false,steps:1,curveSegments:1});if(g.index)g=g.toNonIndexed();const a=g.attributes.position.array,n=g.attributes.normal.array;for(let i=0;i<a.length;i++)pos.push(a[i]);for(let i=0;i<n.length;i++)norm.push(n[i]);
+ const pos=[],norm=[],color=[];let kept=0;
+ for(const b of streetData.buildings){if(b.ring.length<4)continue;
+ if(lowEnd){const center=xy(b.ring[0]);let nearest=0,best=Infinity;for(let i=0;i<path.length;i++){const dd=center.distanceToSquared(path[i]);if(dd<best){best=dd;nearest=i}}if(best>50*50||cumulative[nearest]<START-100||cumulative[nearest]>START+60*SPEED+130)continue}kept++;
+ const vertices=b.ring.slice(0,-1).map(xy);const shape=new THREE.Shape(vertices.map(p=>new THREE.Vector2(p.x,p.y)));let g=new THREE.ExtrudeGeometry(shape,{depth:clamp(Number(b.height)||12,5,90),bevelEnabled:false,steps:1,curveSegments:1});if(g.index)g=g.toNonIndexed();const a=g.attributes.position.array,n=g.attributes.normal.array;for(let i=0;i<a.length;i++)pos.push(a[i]);for(let i=0;i<n.length;i++)norm.push(n[i]);
   const tone=.48+Math.min(Number(b.height)||12,40)/400;for(let i=0;i<a.length/3;i++)color.push(tone,tone*1.035,tone*1.08);g.dispose();
  }
- const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.setAttribute('normal',new THREE.Float32BufferAttribute(norm,3));geo.setAttribute('color',new THREE.Float32BufferAttribute(color,3));geo.computeBoundingSphere();scene.add(new THREE.Mesh(geo,new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide})));
+ const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.setAttribute('normal',new THREE.Float32BufferAttribute(norm,3));geo.setAttribute('color',new THREE.Float32BufferAttribute(color,3));geo.computeBoundingSphere();scene.add(new THREE.Mesh(geo,new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide})));window.buildingsRendered=kept;
 }
-function makeVehicle(bodyColor="#f2f4f7"){
+function makeVehicle(bodyColor="#f2f4f7",detail=true){
  const mat=(c,r=.5,m=.12)=>new THREE.MeshStandardMaterial({color:c,roughness:r,metalness:m});
  const white=mat(bodyColor,.28),trim=mat('#192029',.55),glass=mat('#111e2d',.15,.28),rim=mat('#b7c0ca',.3,.55),rubber=mat('#11141a',.95,0);
  const car=new THREE.Group(),scene=new THREE.Group();
@@ -100,7 +120,7 @@ function makeVehicle(bodyColor="#f2f4f7"){
   const wheel=new THREE.Mesh(new THREE.CylinderGeometry(.335,.335,.205,24),rubber);wheel.rotation.z=Math.PI/2;add(wheel,x,y,.345);
   const hub=new THREE.Mesh(new THREE.CylinderGeometry(.225,.225,.212,20),rim);hub.rotation.z=Math.PI/2;add(hub,x,y,.345);
   const darkHub=new THREE.Mesh(new THREE.CylinderGeometry(.17,.17,.216,20),trim);darkHub.rotation.z=Math.PI/2;add(darkHub,x,y,.345);
-  for(let i=0;i<5;i++){const angle=i*Math.PI*2/5,spoke=box(.015,.038,.205,x+Math.sign(x)*.111,y+Math.sin(angle)*.103,.345+Math.cos(angle)*.103,rim);spoke.rotation.x=-angle}
+  for(let i=0;i<(detail?5:0);i++){const angle=i*Math.PI*2/5,spoke=box(.015,.038,.205,x+Math.sign(x)*.111,y+Math.sin(angle)*.103,.345+Math.cos(angle)*.103,rim);spoke.rotation.x=-angle}
  }
  const led=new THREE.MeshBasicMaterial({color:'#ecf7ff'}),red=new THREE.MeshBasicMaterial({color:'#ed4d56'});
  for(const x of [-.59,.59]){
@@ -113,7 +133,7 @@ function makeVehicle(bodyColor="#f2f4f7"){
  const canvas=document.createElement('canvas');canvas.width=canvas.height=64;const c=canvas.getContext('2d'),grad=c.createRadialGradient(32,32,1,32,32,32);grad.addColorStop(0,'#ffffffdd');grad.addColorStop(.45,'#ffffff99');grad.addColorStop(1,'#ffffff00');c.fillStyle=grad;c.fillRect(0,0,64,64);
  const tex=shadowTexture||(shadowTexture=new THREE.CanvasTexture(canvas));
  function ground(w,l,color,opacity,z){const o=new THREE.Mesh(new THREE.PlaneGeometry(w,l),new THREE.MeshBasicMaterial({color,map:tex,transparent:true,opacity,depthWrite:false}));o.position.z=z;scene.add(o)}
- ground(3.1,5.9,'#03070b',.55,.02);ground(3.8,6.3,'#4296ff',.15,.01);
+ ground(3.1,5.9,'#03070b',lowEnd?.35:.55,.02);if(!lowEnd)ground(3.8,6.3,'#4296ff',.15,.01);
 
  return scene;
 }
@@ -146,27 +166,29 @@ function draw(t){
  for(const item of traffic){let station=item.start+item.speed*t;if(item.speed<0 && station<d-25)station=d+85+((t*3)%35);item.mesh.position.copy(frameAt(station,item.lane,0));item.mesh.rotation.z=-heading(station)+(item.speed<0?Math.PI:0)}
  updateBlue(d);updateHUD(t,d);renderer.render(scene,camera);if(recording)paintCapture();
 }
-function animate(now){if(ready&&!paused){if(startTime===null)startTime=now;draw(((now-startTime)/1000)%60)}last=now;requestAnimationFrame(animate)}
+function animate(now){monitorPerformance(now);if(ready&&!paused){if(startTime===null)startTime=now;draw(((now-startTime)/1000)%60)}last=now;requestAnimationFrame(animate)}
 async function boot(){
  const [r,data]=await Promise.all([fetch('./route.json').then(r=>r.json()),fetch('./street-data.json').then(r=>r.json())]);route=r.routes[0];origin=route.geometry.coordinates[0];path=route.geometry.coordinates.map(xy);streetData=data;cumulative=[0];for(let i=1;i<path.length;i++)cumulative.push(cumulative[i-1]+path[i].distanceTo(path[i-1]));
  scene=new THREE.Scene();scene.background=new THREE.Color('#080b10');scene.fog=new THREE.Fog('#080b10',35,125);
  scene.add(new THREE.HemisphereLight(0xe7efff,0x151d29,1.05));const sun=new THREE.DirectionalLight(0xffffff,1.2);sun.position.set(-20,-15,45);scene.add(sun);
  const ground=new THREE.Mesh(new THREE.PlaneGeometry(5000,5000),new THREE.MeshBasicMaterial({color:'#0d1117'}));ground.position.z=-.06;scene.add(ground);
  camera=new THREE.PerspectiveCamera(FSD.fov,innerWidth/innerHeight,.1,240);camera.up.set(0,0,1);
- renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true,powerPreference:'high-performance'});renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.5));renderer.setSize(innerWidth,innerHeight);renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.1;renderer.outputColorSpace=THREE.SRGBColorSpace;$('map').appendChild(renderer.domElement);
+ renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true,powerPreference:'high-performance'});configureView();renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.1;renderer.outputColorSpace=THREE.SRGBColorSpace;$('map').appendChild(renderer.domElement);
+ renderer.domElement.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});renderer.domElement.addEventListener('gesturestart',e=>e.preventDefault(),{passive:false});
  makeRoad();makeBuildings();mergeStatic();ego=makeVehicle();scene.add(ego);
- for(const item of [{start:START+26,speed:11.2,lane:LANE,color:'#9ea7b2'},{start:START+54,speed:10.0,lane:0,color:'#c6cbd2'},{start:START+84,speed:-9,lane:-LANE,color:'#c6cbd2'},{start:START+142,speed:-10,lane:-LANE,color:'#7c8793'}]){item.mesh=makeVehicle(item.color);scene.add(item.mesh);traffic.push(item)}
+ for(const item of [{start:START+26,speed:11.2,lane:LANE,color:'#9ea7b2'},{start:START+54,speed:10.0,lane:0,color:'#c6cbd2'},{start:START+84,speed:-9,lane:-LANE,color:'#c6cbd2'},{start:START+142,speed:-10,lane:-LANE,color:'#7c8793'}]){item.mesh=makeVehicle(item.color,!lowEnd);scene.add(item.mesh);traffic.push(item)}
  reports.forEach(makeAlert);ready=true;window.demoReady=true;window.demoScene=scene;window.demoCamera=camera;window.demoRenderer=renderer;
- window.renderDemoFrame=async t=>{paused=true;draw(t);return true};window.fsdStats={cameraHeight:FSD.height,cameraBehind:FSD.behind,laneWidth:LANE,lanes:3,carLength:4.7,buildings:streetData.buildings.length,roadLayouts:'illustrative',objects:'simulated'};
- $('loading').style.display='none';draw(0);requestAnimationFrame(animate);if(new URLSearchParams(location.search).has('record'))setTimeout(recordDemo,1800);
- addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);draw(virtualTime)});
+ window.renderDemoFrame=async t=>{paused=true;draw(t);return true};window.fsdStats={cameraHeight:FSD.height,cameraBehind:FSD.behind,laneWidth:LANE,lanes:3,carLength:4.7,buildings:window.buildingsRendered,roadLayouts:'illustrative',objects:'simulated'};
+ $('loading').style.display='none';draw(0);requestAnimationFrame(animate);if(new URLSearchParams(location.search).get('record')==='1')setTimeout(recordDemo,1800);
+ let resizing=false;const resize=()=>{if(resizing)return;resizing=true;requestAnimationFrame(()=>{resizing=false;configureView();draw(virtualTime)})};
+ addEventListener('resize',resize);addEventListener('orientationchange',()=>{resize();setTimeout(resize,180)});if(typeof visualViewport!=='undefined')visualViewport.addEventListener('resize',resize);configureView();
 }
 $('report').onclick=()=>{$('reportMenu').style.display=$('reportMenu').style.display==='flex'?'none':'flex'};
 for(const b of document.querySelectorAll('[data-report]'))b.onclick=()=>{$('reportMenu').style.display='none';$('notice').textContent='הדגמה בלבד · דיווח '+b.dataset.report+' לא נשלח';$('notice').style.display='block';setTimeout(()=>$('notice').style.display='none',2400)};
 function roundRect(x,y,w,h,r=16,color='#101720ef'){ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fillStyle=color;ctx.fill();ctx.strokeStyle='#ffffff17';ctx.lineWidth=1;ctx.stroke()}
 function text(s,x,y,size=20,color='#f5f7fa',weight=500,align='right'){ctx.font=`${weight} ${size}px Heebo,Arial`;ctx.fillStyle=color;ctx.textAlign=align;ctx.direction='rtl';ctx.fillText(s,x,y)}
 function paintCapture(){
- if(!ctx)return;ctx.clearRect(0,0,1600,900);ctx.drawImage(renderer.domElement,0,0,1600,900);
+ if(!ctx)return;ctx.clearRect(0,0,1600,900);const priorAspect=camera.aspect,priorFov=camera.fov,priorView=camera.view?{...camera.view}:null;camera.clearViewOffset();camera.aspect=1600/900;camera.fov=FSD.fov;camera.updateProjectionMatrix();renderer.render(scene,camera);ctx.drawImage(renderer.domElement,0,0,1600,900);camera.aspect=priorAspect;camera.fov=priorFov;if(priorView?.enabled)camera.setViewOffset(priorView.fullWidth,priorView.fullHeight,priorView.offsetX,priorView.offsetY,priorView.width,priorView.height);camera.updateProjectionMatrix();renderer.render(scene,camera);
  text('דרך',1540,48,24,'#f5f7fa',800);text('תצוגת הדגמה · לא מידע מחיישני הרכב',1540,71,12,'#94a1af');
  roundRect(1250,99,310,113);text('↰',1535,160,48);text($('turnDistance').textContent,1470,140,27,'#f5f7fa',700);text($('turnName').textContent,1470,174,18);text('שדרות רוטשילד · תל אביב',1470,197,11,'#91a0b1');
  roundRect(1250,228,310,65);text($('alertTitle').textContent,1537,255,16);text($('alertDetail').textContent,1537,279,11,'#bba77e');
@@ -182,5 +204,6 @@ async function recordDemo(){
  recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};recorder.onstop=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(chunks,{type:mimeType}));a.download='nav-demo.webm';a.click();recording=false;window.recordingDone=true;$('record').textContent='ההקלטה מוכנה'};
  paintCapture();recorder.start(1000);$('record').textContent='מקליט…';const start=performance.now();function frame(){const t=Math.min((performance.now()-start)/1000,DURATION);draw(t);if(t<DURATION)requestAnimationFrame(frame);else recorder.stop()}requestAnimationFrame(frame);
 }
-$('record').onclick=recordDemo;
+// Recording is opt-in by URL only; the ordinary live page always auto-plays.
+$('record').style.display='none';
 boot().catch(e=>{console.error(e);$('loading').textContent='טעינת ההדגמה נכשלה: '+e.message});

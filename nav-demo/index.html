@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>דרך · הדגמת ניווט בתל אביב</title>
+<html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>דרך · הדגמת ניווט בתל אביב</title>
 
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -11,6 +11,33 @@
 #community{top:235px;right:40px;width:310px;padding:12px 16px;border-radius:15px;gap:12px}.alert-icon{width:35px;height:35px;font-size:22px}#alertTitle{font-size:15px}#alertDetail{font-size:11px}
 #bottom{height:66px;bottom:23px;left:35px;right:35px;padding:10px 21px;border-radius:17px}.destination-name{font-size:18px}.destination-sub{font-size:10px}.journey{gap:25px}.journey .value{font-size:21px}.journey .label{font-size:10px}#report{padding:9px 17px;font-size:15px}
 #speed{bottom:111px;left:35px;width:110px;padding:15px 0}.speed-number{font-size:49px}#limit{width:49px;height:49px;left:129px;top:27px;font-size:22px}#road{left:35px;top:30px;padding:10px 15px;font-size:12px}#record{left:35px;bottom:240px;font-size:11px}#status{font-size:9px}.vignette{background:linear-gradient(180deg,#080b1055,transparent 22%,transparent 76%,#080b1033)}
+
+/* v5 mobile viewport + safe areas. Keep browser page zoom accessible; lock gestures only on the scene. */
+:root{--st:env(safe-area-inset-top,0px);--sr:env(safe-area-inset-right,0px);--sb:env(safe-area-inset-bottom,0px);--sl:env(safe-area-inset-left,0px)}
+html,body{height:100%;height:100dvh;overscroll-behavior:none;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{position:fixed;inset:0}#map{width:100%;height:100%;height:100dvh;touch-action:none;overscroll-behavior:none;user-select:none;-webkit-user-select:none}#map canvas{display:block;width:100%;height:100%;touch-action:none;-webkit-touch-callout:none}button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}#record{display:none}.glass{backdrop-filter:none;-webkit-backdrop-filter:none}
+@media(max-width:600px) and (orientation:portrait){
+ #brand,#road{display:none}
+ #turn{top:calc(var(--st) + 12px);left:calc(var(--sl) + 12px);right:calc(var(--sr) + 12px);width:auto;min-height:98px;padding:12px 16px;gap:16px;border-radius:16px}
+ .turn-arrow{font-size:43px}.turn-distance{font-size:27px}.turn-name{font-size:18px;line-height:1.3;margin-top:3px}.then{font-size:13px;margin-top:4px;line-height:1.25}
+ #community{top:calc(var(--st) + 120px);left:calc(var(--sl) + 12px);right:calc(var(--sr) + 12px);width:auto;min-height:66px;padding:10px 12px;gap:10px;border-radius:14px}.alert-icon{width:34px;height:34px;font-size:23px}#alertTitle{font-size:16px;line-height:1.35}#alertDetail{font-size:13px;line-height:1.3;margin-top:3px}
+ #speed{bottom:calc(var(--sb) + 174px);left:calc(var(--sl) + 12px);width:72px;padding:9px 0;border-radius:14px}.speed-number{font-size:35px;letter-spacing:-1px}.speed-unit{font-size:13px;margin-top:1px}#limit{left:80px;top:17px;width:36px;height:36px;border-width:3px;font-size:17px}
+ #bottom{bottom:calc(var(--sb) + 30px);left:calc(var(--sl) + 12px);right:calc(var(--sr) + 12px);height:116px;padding:10px 12px;display:grid;grid-template-rows:44px 44px;gap:7px;border-radius:16px}
+ .destination{display:none}.journey{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:100%;gap:8px;text-align:center}.journey>div{min-width:0}.journey .divider{display:none}.journey .value{font-size:19px;line-height:1.3;white-space:nowrap}.journey .label{font-size:13px;line-height:1.4;white-space:nowrap}
+ #report{width:100%;height:44px;justify-content:center;font-size:17px;padding:9px 12px;border-radius:11px}#report svg{width:21px;height:21px}
+ #status{left:calc(var(--sl) + 12px);right:calc(var(--sr) + 12px);bottom:calc(var(--sb) + 7px);font-size:13px;line-height:17px;text-align:center;direction:ltr;white-space:nowrap}
+ #reportMenu{left:calc(var(--sl) + 12px);right:calc(var(--sr) + 12px);bottom:calc(var(--sb) + 155px);padding:10px;gap:7px;justify-content:stretch}#reportMenu button{flex:1;min-height:48px;padding:10px 5px;font-size:15px;white-space:nowrap}
+ #notice{bottom:calc(var(--sb) + 165px);width:calc(100% - 32px);padding:13px;font-size:15px;text-align:center}#loading{font-size:18px}
+}
+@media(max-height:500px) and (orientation:landscape){
+ #brand,#road{display:none}#turn{top:calc(var(--st) + 10px);right:calc(var(--sr) + 12px);width:min(40vw,330px);padding:10px 15px;min-height:86px;gap:13px;border-radius:14px}.turn-arrow{font-size:37px}.turn-distance{font-size:23px}.turn-name{font-size:16px;margin-top:2px}.then{font-size:13px;margin-top:3px}
+ #community{top:calc(var(--st) + 105px);right:calc(var(--sr) + 12px);width:min(40vw,330px);padding:9px 12px;min-height:59px;gap:10px}.alert-icon{width:30px;height:30px;font-size:21px}#alertTitle{font-size:15px}#alertDetail{font-size:13px}
+ #speed{left:calc(var(--sl) + 12px);bottom:calc(var(--sb) + 102px);width:72px;padding:8px 0;border-radius:13px}.speed-number{font-size:33px}.speed-unit{font-size:13px;margin-top:0}#limit{left:80px;top:13px;width:36px;height:36px;border-width:3px;font-size:17px}
+ #bottom{left:calc(var(--sl) + 12px);right:calc(var(--sr) + 12px);bottom:calc(var(--sb) + 25px);height:65px;padding:8px 12px;display:flex;gap:18px;border-radius:14px}.destination{display:none}.journey{flex:1;justify-content:space-around;gap:10px}.journey .value{font-size:19px}.journey .label{font-size:13px}.journey .divider{display:none}#report{min-height:44px;min-width:150px;padding:9px 13px;font-size:16px}
+ #status{left:calc(var(--sl) + 12px);right:calc(var(--sr) + 12px);bottom:calc(var(--sb) + 4px);font-size:13px;text-align:center;line-height:17px;white-space:nowrap}
+ #reportMenu{right:calc(var(--sr) + 12px);bottom:calc(var(--sb) + 100px);padding:10px;gap:8px}#reportMenu button{min-height:44px;padding:10px 14px;font-size:15px}#notice{bottom:calc(var(--sb) + 100px);font-size:15px}
+}
+@media(prefers-reduced-motion:reduce){.glass{box-shadow:none}}
 </style></head><body><div id="map"></div><div class="vignette"></div>
 <div class="hud" id="brand"><div class="brand-mark">↗</div><div><div class="brand-name">דרך</div><div class="eyebrow">תצוגת הדגמה · לא מחיישני הרכב</div></div><div class="demo">הדגמה · נתוני קהילה מדומים</div></div>
 <div class="hud glass" id="turn"><div class="turn-arrow" id="turnArrow">↰</div><div><div class="turn-distance" id="turnDistance">700 מ׳</div><div class="turn-name" id="turnName">שמאלה לכיכר הבימה</div><div class="then">ממשיכים בשדרות רוטשילד</div></div></div>
@@ -18,6 +45,6 @@
 <div class="hud glass" id="road"><span>תל אביב–יפו</span>שדרות רוטשילד</div>
 <div class="hud glass" id="speed"><div class="speed-number" id="speedValue">38</div><div class="speed-unit">קמ״ש</div><div id="limit">50</div></div>
 <div class="hud glass" id="bottom"><div class="destination"><div class="destination-dot"></div><div><div class="destination-name">כיכר הבימה</div><div class="destination-sub">תל אביב–יפו · מסלול הדגמה</div></div></div><div class="journey"><div><div class="value" id="etaValue">12:10</div><div class="label">הגעה משוערת</div></div><div class="divider"></div><div><div class="value" id="minutesValue">2 דק׳</div><div class="label">זמן נסיעה</div></div><div class="divider"></div><div><div class="value" id="distanceValue">1.0 ק״מ</div><div class="label">נותרו ליעד</div></div></div><button id="report"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 21V3m0 1c5-5 7 5 13 0v11c-6 5-8-5-13 0"/></svg>דיווח קהילתי</button></div>
-<button id="record">הקלטת הדגמה · 24 שניות</button><div id="status">© OpenStreetMap contributors · OpenFreeMap · OSRM · נתיבים ותנועה מדומים</div>
+<button id="record">הקלטת הדגמה · 24 שניות</button><div id="status">© OpenStreetMap · OpenFreeMap · הדמיה</div>
 <div id="reportMenu" class="glass"><button data-report="משטרה">משטרה</button><button data-report="עבודות בכביש">עבודות בכביש</button><button data-report="מפגע">מפגע</button></div><div id="notice"></div><div id="loading"><div><b>דרך</b> · טוען את תל אביב…</div></div>
-<script src="https://unpkg.com/three@0.152.2/build/three.min.js"></script><script src="app.js?v=4"></script></body></html>
+<script src="https://unpkg.com/three@0.152.2/build/three.min.js"></script><script src="app.js?v=5"></script></body></html>
