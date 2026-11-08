@@ -4,6 +4,40 @@ const $=id=>document.getElementById(id),RAD=Math.PI/180,START=530,SPEED=10.5,DUR
 const FSD={height:2.35,behind:7.8,fov:52,lookAhead:43,lookHeight:1.1,roadWidth:9.9};
 let renderer,scene,camera,ego,path,cumulative,route,origin,streetData,ready=false,recording=false,virtualTime=0,shadowTexture;
 let capture,ctx,paused=false,startTime=null,last=null;
+// v6: one flow-based portrait HUD. Bundled with JS so an old cached HTML shell
+// cannot resurrect the desktop cards over the mobile scene.
+const MOBILE_STYLE=`
+html[data-phone-layout="portrait"],html[data-phone-layout="portrait"] body{-webkit-text-size-adjust:100%!important;text-size-adjust:100%!important}
+html[data-phone-layout="portrait"] #brand,html[data-phone-layout="portrait"] #road,html[data-phone-layout="portrait"] #turn,html[data-phone-layout="portrait"] #community,html[data-phone-layout="portrait"] #speed,html[data-phone-layout="portrait"] #bottom,html[data-phone-layout="portrait"] #status,html[data-phone-layout="portrait"] #record{display:none!important}
+#mobileHUD{display:none}
+html[data-phone-layout="portrait"] #mobileHUD{position:fixed;inset:0;top:0;right:0;bottom:0;left:0;z-index:8;display:flex!important;flex-direction:column;justify-content:space-between;gap:16px;padding:10px 12px 6px 12px;padding:calc(env(safe-area-inset-top,0px) + 10px) calc(env(safe-area-inset-right,0px) + 12px) calc(env(safe-area-inset-bottom,0px) + 6px) calc(env(safe-area-inset-left,0px) + 12px);max-width:100%;width:100%;height:100%;height:100dvh;pointer-events:none;direction:rtl;font-family:Heebo,Arial,sans-serif;font-size:16px;line-height:1.25;-webkit-text-size-adjust:100%;text-size-adjust:100%;box-sizing:border-box}
+#mobileHUD *{box-sizing:border-box;min-width:0;max-width:100%;text-size-adjust:100%;-webkit-text-size-adjust:100%}
+.mobileTop,.mobileBottom{display:flex;flex-direction:column;width:100%;flex:none;gap:8px;min-height:0}
+.mobileTurn{display:flex;align-items:center;gap:12px;padding:10px 13px;width:100%;height:76px;min-height:76px;max-height:76px;background:#101720f2;border:1px solid #ffffff1f;border-radius:15px;overflow:hidden}
+.mobileArrow{flex:0 0 34px;font-family:Arial,sans-serif;font-size:34px;line-height:1;text-align:center;color:#f2f6ff}
+.mobileTurnInfo{flex:1;display:flex;flex-direction:column;gap:5px;overflow:hidden}.mobileDistance{font-size:22px;line-height:25px;font-weight:700;white-space:nowrap}.mobileStreet{font-size:14px;line-height:19px;color:#d4dde8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mobileAlert{height:34px;min-height:34px;max-height:34px;padding:6px 11px;border-radius:11px;background:#17202cef;border:1px solid #d7b1723d;font-size:13px;line-height:20px;color:#d5c29e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mobileBottom{gap:5px}.mobileBar{width:100%;height:62px;min-height:62px;max-height:62px;display:flex;align-items:center;gap:9px;padding:8px;background:#101720f5;border:1px solid #ffffff20;border-radius:15px;direction:ltr;overflow:hidden}
+.mobileSpeed{flex:0 0 70px;display:flex;align-items:center;gap:6px;direction:ltr}.mobileSpeedRead{flex:0 0 32px;display:flex;flex-direction:column;align-items:center;gap:0}.mobileSpeedNumber{font-size:25px;line-height:27px;font-weight:700;white-space:nowrap}.mobileSpeedUnit{font-size:13px;line-height:15px;color:#a3b0c2;white-space:nowrap}.mobileLimit{display:flex;align-items:center;justify-content:center;flex:0 0 30px;width:30px;height:30px;background:#fff;border:3px solid #db6969;border-radius:50%;font-size:14px;font-weight:700;line-height:20px;color:#27323e}
+.mobileJourney{flex:1;display:flex;align-items:center;justify-content:space-around;gap:6px;direction:rtl;overflow:hidden}.mobileJourney span{flex:0 1 auto;max-width:100%;font-size:14px;line-height:20px;white-space:nowrap;color:#e2e9f2;font-weight:500;overflow:hidden;text-overflow:ellipsis}
+#mobileReport{pointer-events:auto;flex:0 0 40px;width:40px;height:40px;min-height:40px;display:flex;align-items:center;justify-content:center;padding:0;background:#234775;border:1px solid #75a9ed55;border-radius:50%;color:#d9e9ff;font:22px/1 Arial,sans-serif;touch-action:manipulation}
+.mobileAttribution{width:100%;font:10px/13px Arial,sans-serif;text-align:center;color:#8a97a9;direction:ltr;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+html[data-phone-layout="portrait"] #reportMenu{bottom:calc(env(safe-area-inset-bottom,0px) + 103px)!important;left:12px!important;right:12px!important;width:auto!important;max-width:calc(100% - 24px);padding:9px!important;gap:6px!important}
+html[data-phone-layout="portrait"] #reportMenu button{min-height:44px;font-size:14px;padding:9px 5px;flex:1;white-space:nowrap}
+html[data-phone-layout="portrait"] #notice{bottom:calc(env(safe-area-inset-bottom,0px) + 105px)!important;max-width:calc(100% - 24px);font-size:14px}
+`;
+const MOBILE_HTML=`<section id="mobileHUD" aria-label="ניווט בהדגמה"><div class="mobileTop"><div class="mobileTurn"><div class="mobileArrow" aria-hidden="true">↰</div><div class="mobileTurnInfo"><div class="mobileDistance" id="mobileDistance">850 מ׳</div><div class="mobileStreet" id="mobileStreet">שמאלה לכיכר הבימה</div></div></div><div class="mobileAlert" id="mobileAlert">הדגמה · משטרה בעוד 65 מ׳</div></div><div class="mobileBottom"><div class="mobileBar"><div class="mobileSpeed"><div class="mobileSpeedRead"><span class="mobileSpeedNumber" id="mobileSpeed">38</span><span class="mobileSpeedUnit">קמ״ש</span></div><div class="mobileLimit">50</div></div><div class="mobileJourney"><span id="mobileETA">12:30</span><span id="mobileMinutes">2 דק׳</span><span id="mobileRemaining">890 מ׳</span></div><button id="mobileReport" type="button" aria-label="דיווח קהילתי" title="דיווח קהילתי">⚑</button></div><div class="mobileAttribution">© OpenStreetMap contributors · OpenFreeMap · הדמיה</div></div></section>`;
+function installMobileHUD(){
+ const viewport=document.querySelector?.('meta[name="viewport"]');if(viewport)viewport.setAttribute('content','width=device-width,initial-scale=1,viewport-fit=cover');
+ const style=document.createElement('style');style.id='phoneHUDv6';style.textContent=MOBILE_STYLE;document.head?.appendChild(style);
+ if(document.body?.insertAdjacentHTML&&!document.getElementById('mobileHUD'))document.body.insertAdjacentHTML('beforeend',MOBILE_HTML);
+ const button=$('mobileReport');if(button)button.onclick=()=>{$('report').click()};
+}
+function updateMobileHUD(){
+ for(const [target,source] of [['mobileDistance','turnDistance'],['mobileStreet','turnName'],['mobileSpeed','speedValue'],['mobileETA','etaValue'],['mobileMinutes','minutesValue'],['mobileRemaining','distanceValue']]){const node=$(target);if(node)node.textContent=$(source).textContent}
+ const node=$('mobileAlert');if(node)node.textContent='הדגמה · '+$('alertTitle').textContent;
+}
+installMobileHUD();
 const deviceInfo=typeof navigator==='undefined'?{}:navigator;
 const lowEnd=(deviceInfo.hardwareConcurrency||8)<=4 || (deviceInfo.deviceMemory||8)<=4;
 let view={width:1600,height:900,portrait:false,phoneLandscape:false,pixelRatio:1,behind:FSD.behind,fov:FSD.fov,shift:0};
@@ -11,6 +45,7 @@ let effectiveDprCap=lowEnd?1.5:2,frameCount=0,frameTotal=0;
 function viewportSize(){const vv=typeof visualViewport==='undefined'?null:visualViewport;return {width:Math.max(1,Math.round(vv?.width||innerWidth)),height:Math.max(1,Math.round(vv?.height||innerHeight))}}
 function configureView(){
  const {width,height}=viewportSize(),portrait=width<=600&&height>width,phoneLandscape=height<=500&&width>height;
+ if(document.documentElement)document.documentElement.setAttribute('data-phone-layout',portrait?'portrait':'wide');
  view={width,height,portrait,phoneLandscape,pixelRatio:Math.min(devicePixelRatio||1,effectiveDprCap),behind:portrait?12:phoneLandscape?10.8:FSD.behind,fov:portrait?70:phoneLandscape?58:FSD.fov,shift:portrait?.055:0};
  camera.aspect=width/height;camera.fov=view.fov;camera.clearViewOffset();if(view.shift)camera.setViewOffset(width,height,0,-height*view.shift,width,height);camera.updateProjectionMatrix();
  renderer.setPixelRatio(view.pixelRatio);renderer.setSize(width,height);
@@ -157,7 +192,7 @@ function mergeStatic(){
 function updateHUD(t,d){
  const remaining=Math.max(0,cumulative.at(-1)-d),td=Math.max(0,remaining-40),next=route.legs.flatMap(l=>l.steps).find(s=>s.maneuver.type==='end of road');
  $('turnDistance').textContent=Math.round(td/10)*10+' מ׳';$('turnName').textContent='שמאלה ל'+(next?.name||'כיכר הבימה');$('speedValue').textContent=Math.round(SPEED*3.6+Math.sin(t*.4));$('minutesValue').textContent=Math.max(1,Math.ceil(remaining/SPEED/60))+' דק׳';$('distanceValue').textContent=Math.round(remaining/10)*10+' מ׳';$('etaValue').textContent='12:30';
- const r=reports.find(r=>r.d>d)||reports.at(-1),ahead=Math.max(0,Math.round((r.d-d)/5)*5);$('alertTitle').textContent=r.title+' · בעוד '+ahead+' מ׳';$('alertDetail').textContent='הדגמה · אושר ע״י '+r.confirmed+' נהגים';$('alertIcon').textContent=r.icon;
+ const r=reports.find(r=>r.d>d)||reports.at(-1),ahead=Math.max(0,Math.round((r.d-d)/5)*5);$('alertTitle').textContent=r.title+' · בעוד '+ahead+' מ׳';$('alertDetail').textContent='הדגמה · אושר ע״י '+r.confirmed+' נהגים';$('alertIcon').textContent=r.icon;updateMobileHUD();
 }
 function draw(t){
  if(!ready)return;virtualTime=t;const d=START+Math.min(t,60)*SPEED;
