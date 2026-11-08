@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="referrer" content="no-referrer">
+<title>בדיקת דפדפן טסלה — מאיר</title>
+<style>
+:root{color-scheme:dark;--bg:#10151d;--panel:#1b2431;--line:#45576d;--muted:#bdc9d8;--blue:#98ccff;--ok:#7fe0ae;--warn:#ffda8a;--bad:#ff9caa}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#f5f8fc;font:20px/1.6 system-ui,-apple-system,Arial,sans-serif}main{max-width:1400px;margin:auto;padding:24px}h1{font-size:34px;margin:0}h2{font-size:25px;margin:0 0 12px}h3{font-size:21px}.muted,small{color:var(--muted)}header,.card{background:var(--panel);padding:24px;border:1px solid var(--line);border-radius:18px;margin-bottom:20px}.warning{color:var(--warn);font-weight:700}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:20px}.grid .card{margin:0}.wide{grid-column:1/-1}button,select{font:inherit;min-height:64px;border-radius:12px;border:1px solid #7593b4;padding:12px 22px;background:#2b4666;color:#fff;touch-action:manipulation;cursor:pointer}button:hover{background:#375e87}button:disabled{opacity:.55;cursor:wait}.primary{background:#28578c;font-weight:700}button:focus-visible,a:focus-visible{outline:3px solid var(--warn);outline-offset:4px}.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:12px 0}label{padding:8px 0}input[type=checkbox]{width:26px;height:26px;vertical-align:middle;margin:0 8px}.status{font-weight:700;padding:8px 0;min-height:42px}.status[data-state=pass]{color:var(--ok)}.status[data-state=fail]{color:var(--bad)}.status[data-state=partial],.status[data-state=running]{color:var(--warn)}pre,textarea{white-space:pre-wrap;overflow-wrap:anywhere;direction:ltr;text-align:left;font:16px/1.55 ui-monospace,monospace;background:#0c121a;border:1px solid var(--line);padding:16px;border-radius:10px;max-height:410px;overflow:auto;margin:10px 0}#summary{max-height:760px}#map{height:450px;background:#101820;border-radius:10px;direction:ltr}meter{width:100%;height:38px}audio{width:100%;margin:10px 0}a{color:var(--blue)}.tag{border:1px solid var(--line);border-radius:8px;padding:4px 12px;font-size:17px}#fps{font-size:26px;font-weight:bold;color:var(--ok)}footer{margin:22px 0;color:var(--muted)}@media(max-width:600px){main{padding:12px}.grid{grid-template-columns:1fr}header,.card{padding:17px}h1{font-size:28px}button{width:100%}}
+</style>
+</head>
+<body>
+<main>
+<header>
+<h1>מאיר — בדיקת דפדפן טסלה</h1>
+<p>דף אבחון ל־Model Y 2026 ולאפליקציית ניווט ישראלית. אין צורך בהתקנה.</p>
+<p class="warning">בצע את הבדיקה רק כשהרכב חונה בבטחה, במצב P. אין להפעיל את הבדיקות או לצלם בזמן נהיגה.</p>
+<p class="muted">לא נשמרים תוצאות או הקלטות בשרת. מיקום ותמלול נשארים בדף עד רענון; דיבור לזיהוי עשוי להישלח לשירות של ספק הדפדפן. המפה טוענת קוד ואריחים מ־unpkg ומ־OpenFreeMap וחושפת להם כתובת IP. אין מפה שעוקבת אחר מיקומך.</p>
+<div class="row"><button id="runAll" class="primary">הפעל את כל הבדיקות</button><button id="stop">עצור הכול</button><label><input id="includeMap" type="checkbox" checked>כלול מפה חיצונית</label></div>
+<p id="global" role="status" aria-live="polite">מוכן. הרצה מלאה אורכת כדקה–שתיים. אפשר להפעיל כל בדיקה בנפרד.</p>
+<p class="muted">בדיקות קול, הרשאות, העתקה ומסך מלא עשויות לדרוש לחיצה נפרדת גם אחרי ״הפעל הכול״. ״תמיכה״ אינה הוכחה שהפעולה עובדת. אין להסיק מסוג GPU בלבד איזה MCU מותקן.</p>
+</header>
+<div class="grid">
+<section class="card"><h2>1. דפדפן וחומרה</h2><button data-test="browser">בדוק דפדפן ו־GPU</button><div id="browser-status" class="status" role="status">טרם נבדק</div><pre id="browser-out"></pre></section>
+<section class="card"><h2>2. מיקום — כ־20 שניות</h2><button data-test="geo">בדוק GPS חי</button><div id="geo-status" class="status" role="status">טרם נבדק</div><pre id="geo-out"></pre><small>ללא נסיעה, מהירות וכיוון יכולים להיות null. דיוק ומיקום אינם נשמרים לאחר רענון.</small></section>
+<section class="card"><h2>3. מיקרופון — 8 שניות</h2><button data-test="mic">אפשר מיקרופון ובדוק עוצמה</button><meter id="level" min="0" max="1" value="0" aria-label="עוצמת מיקרופון"></meter><div id="mic-status" class="status" role="status">טרם נבדק</div><pre id="mic-out"></pre></section>
+<section class="card"><h2>4. זיהוי דיבור בעברית</h2><p>אחרי הלחיצה אמור: ״דיווח על מפגע בכביש״. הזיהוי עשוי להשתמש בשרת של ספק הדפדפן.</p><button data-test="recognition">התחל זיהוי דיבור</button><div id="recognition-status" class="status" role="status">טרם נבדק</div><pre id="recognition-out"></pre></section>
+<section class="card"><h2>5. הקראה בעברית</h2><button data-test="speech">מצא קולות והקרא בעברית</button><div class="row"><button id="speechYes">שמעתי עברית תקינה</button><button id="speechNo">לא שמעתי / לא בעברית</button></div><div id="speech-status" class="status" role="status">טרם נבדק</div><pre id="speech-out"></pre></section>
+<section class="card"><h2>6. השמעת קול</h2><button data-test="audio">נגן צליל Web Audio וגם WAV</button><audio id="wavAudio" controls preload="none" aria-label="בדיקת קובץ קול WAV"></audio><div class="row"><button id="audioYes">שמעתי שני צלילים</button><button id="audioNo">לא שמעתי שני צלילים</button></div><div id="audio-status" class="status" role="status">טרם נבדק</div><pre id="audio-out"></pre><small>ה־WAV מיוצר מקומית: בדיקת השמעה, לא בדיקת TTS עברי או קובץ מרשת.</small></section>
+<section class="card wide"><h2>7. WebGL ומפת תל אביב בתלת־ממד</h2><div class="row"><button data-test="webgl">בדוק WebGL / WebGL2</button><button data-test="map">טען מפה ומדוד FPS במשך 10 שניות</button><span id="fps">FPS: —</span></div><div id="webgl-status" class="status" role="status">WebGL טרם נבדק</div><pre id="webgl-out"></pre><div id="map-status" class="status" role="status">מפה טרם נבדקה</div><div id="map"></div><pre id="map-out"></pre><small>FPS של requestAnimationFrame ושל אירועי רינדור מדווחים בנפרד; זו אינדיקציה, לא benchmark מבוקר. גבהים מהנתונים או ברירת מחדל של 9 מטר, לא הדמיה מדויקת. כשל רשת אינו הוכחה שה־GPU לא נתמך.</small></section>
+<section class="card wide"><h2>8. אחסון ויכולות מערכת</h2><button data-test="storage">בדוק אחסון ותמיכה ב־API</button><div class="row"><button id="wake">בדוק נעילת מסך ער</button><button id="notify">בקש הרשאת התראות</button><button id="vibrate">בדוק רטט</button><button id="full">בדוק מסך מלא</button><button id="clipProbe">בדוק כתיבה ללוח</button></div><p class="muted">הרשאת התראות יכולה להישאר שמורה בדפדפן. בדיקת הלוח מחליפה את תוכן הלוח. Service Worker נבדק לזמינות API בלבד — לא מותקן Worker או מצב אופליין.</p><div id="storage-status" class="status" role="status">טרם נבדק</div><pre id="storage-out"></pre></section>
+<section class="card wide"><h2>סיכום לצילום ולהעתקה</h2><div class="row"><button id="copy" class="primary">העתק תוצאות JSON</button><button id="download">הורד קובץ תוצאות</button><label><input id="redact" type="checkbox" checked>הסתר מיקום ותמלול מהסיכום המיוצא</label></div><div id="copy-status" class="status" role="status"></div><p>הסיכום מתעדכן אוטומטית. פירוט GPS ותמלול מעליו נשאר גלוי גם כשהייצוא מוסתר. לשיתוף, העתק רק את הסיכום.</p><pre id="summary" tabindex="0"></pre></section>
+</div>
+<footer>גרסה 1.0 · אין אנליטיקה, חשבון או פרסומות · <a href="https://maplibre.org/">MapLibre</a> / <a href="https://openfreemap.org/">OpenFreeMap</a> · נתוני מפה © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a><br>הבדיקה מתארת רק את מצב החניה הנוכחי. ייתכנו מגבלות אחרות בזמן נסיעה ובעדכוני תוכנה עתידיים.</footer>
+</main>
+<script>
+(function(){
+'use strict';
+var $=function(id){return document.getElementById(id);};
+var results={};
+var names={browser:'דפדפן וחומרה',geo:'מיקום',mic:'מיקרופון',recognition:'זיהוי דיבור',speech:'הקראה',audio:'השמעת קול',webgl:'WebGL',map:'מפת תלת־ממד',storage:'אחסון ומערכת'};
+var labels={pass:'עבר',fail:'נכשל',partial:'חלקי / נדרשת בדיקה',running:'פועל',skipped:'דולג'};
+var generation=0,allRunning=false,active={},cleanup={},mapInstance=null,mapLoadPromise=null;
+var started=new Date().toISOString();
+var wait=function(ms){return new Promise(function(resolve){setTimeout(resolve,ms);});};
+function errorInfo(e){return {name:e&&e.name||'Error',message:e&&e.message||String(e),code:e&&e.code};}
+function update(id,state,data){results[id]={state:state,updatedAt:new Date().toISOString(),data:data};var s=$(id+'-status');if(s){s.dataset.state=state;s.textContent=labels[state]+' — '+names[id];}if($(id+'-out'))$(id+'-out').textContent=JSON.stringify(data,null,2);renderSummary();}
+function exportData(){var clone=JSON.parse(JSON.stringify(results));if($('redact').checked){if(clone.geo)clone.geo.data={redacted:true,state:clone.geo.state,note:'Location details omitted'};if(clone.recognition&&clone.recognition.data){delete clone.recognition.data.transcript;delete clone.recognition.data.interim;}}
+return {schemaVersion:1,sessionStartedAt:started,exportedAt:new Date().toISOString(),timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone,secureContext:window.isSecureContext,protocol:location.protocol,testContext:'Parked only; not a driving test',privacyRedacted:$('redact').checked,results:clone};}
+function renderSummary(){var counts={};Object.keys(results).forEach(function(k){var s=results[k].state;counts[s]=(counts[s]||0)+1;});$('summary').textContent=Object.keys(names).map(function(k){return names[k]+': '+(results[k]?labels[results[k].state]:'טרם נבדק');}).join('\n')+'\n\n'+JSON.stringify(exportData(),null,2);}
+function canContinue(token){return token===generation;}
+async function permission(name){if(!navigator.permissions||!navigator.permissions.query)return 'query unsupported';try{return (await navigator.permissions.query({name:name})).state;}catch(e){return 'query unavailable: '+e.name;}}
+async function limited(promise,ms){var timer;try{return await Promise.race([promise,new Promise(function(_,reject){timer=setTimeout(function(){var e=new Error('Timeout after '+ms+' ms');e.name='TimeoutError';reject(e);},ms);})]);}finally{clearTimeout(timer);}}
+function dispose(id){if(cleanup[id]){try{cleanup[id]();}catch(e){}delete cleanup[id];}}
+function gpuInfo(){var canvas=document.createElement('canvas'),gl=canvas.getContext('webgl')||canvas.getContext('experimental-webgl');if(!gl)return {supported:false};var ext=gl.getExtension('WEBGL_debug_renderer_info'),data={supported:true,vendor:gl.getParameter(gl.VENDOR),renderer:gl.getParameter(gl.RENDERER),unmaskedVendor:ext?gl.getParameter(ext.UNMASKED_VENDOR_WEBGL):null,unmaskedRenderer:ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):null,debugRendererInfo:!!ext};var lose=gl.getExtension('WEBGL_lose_context');if(lose)lose.loseContext();return data;}
+var tests={};
+tests.browser=async function(){var match=navigator.userAgent.match(/(?:Chrome|Chromium)\/([\d.]+)/);update('browser','pass',{userAgent:navigator.userAgent,chromeVersion:match?match[1]:null,platform:navigator.platform,languages:navigator.languages,screen:{width:screen.width,height:screen.height,availableWidth:screen.availWidth,availableHeight:screen.availHeight,colorDepth:screen.colorDepth},viewport:{innerWidth:innerWidth,innerHeight:innerHeight,visualWidth:window.visualViewport?visualViewport.width:null,visualHeight:window.visualViewport?visualViewport.height:null},devicePixelRatio:devicePixelRatio,hardwareConcurrency:navigator.hardwareConcurrency||null,deviceMemoryGB:navigator.deviceMemory||null,secureContext:window.isSecureContext,gpu:gpuInfo(),note:'Missing or masked hardware data is normal; MCU type cannot be established reliably from this alone.'});};
+tests.geo=async function(token){
+if(!navigator.geolocation){update('geo','fail',{error:'Geolocation API unavailable'});return;}
+var data={permissionBefore:await permission('geolocation'),durationSeconds:20,highAccuracy:true,firstFix:null,watchSamples:[],errors:[]},watchId=null,ended=false,finish;
+if(!canContinue(token))return;
+function sample(p){var c=p.coords;return {receivedAt:new Date().toISOString(),timestamp:p.timestamp,latitude:c.latitude,longitude:c.longitude,accuracyMeters:c.accuracy,altitudeMeters:c.altitude,altitudeAccuracyMeters:c.altitudeAccuracy,speedMetersPerSecond:c.speed,speedKmh:c.speed===null?null:c.speed*3.6,headingDegrees:c.heading};}
+var done=new Promise(function(resolve){finish=resolve;});
+function end(){if(ended)return;ended=true;if(watchId!==null)navigator.geolocation.clearWatch(watchId);finish();}
+cleanup.geo=end;
+function err(e){if(ended||!canContinue(token))return;data.errors.push({code:e.code,message:e.message,meaning:{1:'PERMISSION_DENIED',2:'POSITION_UNAVAILABLE',3:'TIMEOUT'}[e.code]});update('geo','running',data);if(e.code===1)end();}
+update('geo','running',data);
+try{navigator.geolocation.getCurrentPosition(function(p){if(!ended&&canContinue(token)){data.firstFix=sample(p);update('geo','running',data);}},err,{enableHighAccuracy:true,maximumAge:0,timeout:18000});watchId=navigator.geolocation.watchPosition(function(p){if(!ended&&canContinue(token)){data.watchSamples.push(sample(p));update('geo','running',data);}},err,{enableHighAccuracy:true,maximumAge:0,timeout:18000});}catch(e){data.errors.push(errorInfo(e));end();}
+var timer=setTimeout(end,20000);await done;clearTimeout(timer);dispose('geo');if(!canContinue(token))return;
+data.permissionAfter=await permission('geolocation');var times=data.watchSamples.map(function(p){return Date.parse(p.receivedAt);});data.intervalsMs=times.slice(1).map(function(t,i){return t-times[i];});data.averageUpdatesPerSecond=times.length>1&&(times[times.length-1]>times[0])?(times.length-1)*1000/(times[times.length-1]-times[0]):null;data.note='Watch callbacks may repeat cached coordinates. Browser geolocation is not proof of a direct vehicle GPS feed.';update('geo',(data.firstFix||times.length)?'pass':'fail',data);
+};
+tests.mic=async function(token){
+var data={permissionBefore:await permission('microphone'),secureContext:window.isSecureContext};
+if(!canContinue(token))return;if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){update('mic','fail',Object.assign(data,{error:'getUserMedia unavailable; HTTPS or browser restriction'}));return;}
+var stream=null,ctx=null,raf=null,finished=false;
+function stopMic(){finished=true;if(raf)cancelAnimationFrame(raf);if(stream)stream.getTracks().forEach(function(t){t.stop();});if(ctx)ctx.close().catch(function(){});$('level').value=0;}
+cleanup.mic=stopMic;
+try{
+var request=navigator.mediaDevices.getUserMedia({audio:true});request.then(function(s){if(finished||!canContinue(token))s.getTracks().forEach(function(t){t.stop();});},function(){});
+stream=await limited(request,16000);if(!canContinue(token)){stopMic();return;}
+data.granted=true;data.tracks=stream.getAudioTracks().map(function(t){return {label:t.label,enabled:t.enabled,muted:t.muted,readyState:t.readyState,settings:t.getSettings?t.getSettings():{}};});
+var AC=window.AudioContext||window.webkitAudioContext;
+if(AC){ctx=new AC();await limited(ctx.resume(),2000);var analyser=ctx.createAnalyser();analyser.fftSize=1024;ctx.createMediaStreamSource(stream).connect(analyser);var bytes=new Uint8Array(analyser.fftSize);data.peakRMS=0;data.audioContextState=ctx.state;
+function tick(){if(finished||!canContinue(token))return;analyser.getByteTimeDomainData(bytes);var sum=0;for(var i=0;i<bytes.length;i++){var v=(bytes[i]-128)/128;sum+=v*v;}var rms=Math.sqrt(sum/bytes.length);data.peakRMS=Math.max(data.peakRMS,rms);$('level').value=Math.min(1,rms*5);raf=requestAnimationFrame(tick);}tick();}
+update('mic','running',Object.assign(data,{instruction:'Speak now; listening locally for 8 seconds; nothing recorded.'}));await wait(8000);data.note='Permission granted does not establish usable sound. Check peakRMS and visible level meter.';if(canContinue(token))update('mic',data.audioContextState==='running'&&data.peakRMS>0.002?'pass':'partial',data);
+}catch(e){if(canContinue(token))update('mic',data.granted?'partial':'fail',Object.assign(data,{error:errorInfo(e),note:'A timed-out permission prompt may remain visible; dismiss it in the browser.'}));}finally{dispose('mic');}
+};
+tests.recognition=async function(token){
+var SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){update('recognition','fail',{supported:false,error:'SpeechRecognition / webkitSpeechRecognition unavailable'});return;}
+var data={supported:true,lang:'he-IL',transcript:'',interim:'',events:[],networkMayBeUsed:true},rec=new SR(),finished=false,finish;
+var done=new Promise(function(resolve){finish=resolve;});
+function end(){if(finished)return;finished=true;try{rec.abort();}catch(e){}finish();}
+cleanup.recognition=end;rec.lang='he-IL';rec.continuous=false;rec.interimResults=true;
+rec.onstart=function(){data.events.push('start');};
+rec.onresult=function(e){if(finished||!canContinue(token))return;data.transcript='';data.interim='';for(var i=0;i<e.results.length;i++){var r=e.results[i];if(r.isFinal)data.transcript+=r[0].transcript+' ';else data.interim+=r[0].transcript+' ';}update('recognition','running',data);};
+rec.onerror=function(e){if(finished)return;data.error={error:e.error,message:e.message};end();};rec.onend=function(){data.events.push('end');end();};
+update('recognition','running',data);try{rec.start();}catch(e){data.error=errorInfo(e);end();}
+var timer=setTimeout(function(){data.timeout=true;end();},16000);await done;clearTimeout(timer);dispose('recognition');if(canContinue(token))update('recognition',data.transcript.trim()?'pass':(data.error?'fail':'partial'),data);
+};
+tests.speech=async function(token){
+if(!window.speechSynthesis||!window.SpeechSynthesisUtterance){update('speech','fail',{supported:false});return;}
+var synth=window.speechSynthesis;var voices=synth.getVoices();for(var attempt=0;attempt<10&&!voices.length;attempt++){await wait(150);voices=synth.getVoices();if(!canContinue(token))return;}
+var hebrew=voices.filter(function(v){return /^he(?:-|_|$)/i.test(v.lang)||/^iw(?:-|_|$)/i.test(v.lang);});
+var data={supported:true,voices:voices.map(function(v){return {name:v.name,lang:v.lang,localService:v.localService,hebrew:/^(he|iw)(?:-|_|$)/i.test(v.lang)};}),hebrewVoiceCount:hebrew.length,text:'בעוד 300 מטר פנה ימינה',events:[],audibleConfirmed:null};
+var utter=new SpeechSynthesisUtterance(data.text),finish,ended=false;utter.lang='he-IL';utter.rate=.9;if(hebrew.length)utter.voice=hebrew[0];
+function end(){if(ended)return;ended=true;finish();}
+var done=new Promise(function(resolve){finish=resolve;});cleanup.speech=function(){synth.cancel();end();};utter.onstart=function(){data.events.push('start');};utter.onend=function(){data.events.push('end');end();};utter.onerror=function(e){data.error=e.error;end();};
+update('speech','running',data);synth.cancel();synth.speak(utter);var timer=setTimeout(function(){data.timeout=true;end();},11000);await done;clearTimeout(timer);dispose('speech');if(canContinue(token))update('speech',data.error?'fail':'partial',data);
+};
+function wavURI(){var rate=16000,len=rate*.45,buf=new ArrayBuffer(44+len*2),view=new DataView(buf);function text(off,s){for(var j=0;j<s.length;j++)view.setUint8(off+j,s.charCodeAt(j));}text(0,'RIFF');view.setUint32(4,36+len*2,true);text(8,'WAVE');text(12,'fmt ');view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,1,true);view.setUint32(24,rate,true);view.setUint32(28,rate*2,true);view.setUint16(32,2,true);view.setUint16(34,16,true);text(36,'data');view.setUint32(40,len*2,true);for(var i=0;i<len;i++){var env=Math.min(1,i/160,(len-i)/160);view.setInt16(44+i*2,Math.sin(2*Math.PI*660*i/rate)*env*7000,true);}var raw='',bytes=new Uint8Array(buf);for(var k=0;k<bytes.length;k++)raw+=String.fromCharCode(bytes[k]);return 'data:audio/wav;base64,'+btoa(raw);}
+$('wavAudio').src=wavURI();
+tests.audio=async function(token){
+var data={webAudio:{},htmlAudio:{},audibleConfirmed:null},ctx=null,el=$('wavAudio');cleanup.audio=function(){el.pause();if(ctx)ctx.close().catch(function(){});};
+// Both requests start synchronously in the click path, preserving user activation where possible.
+var AC=window.AudioContext||window.webkitAudioContext;
+var web=(async function(){try{if(!AC)throw new Error('AudioContext unavailable');ctx=new AC();await limited(ctx.resume(),2500);data.webAudio.contextState=ctx.state;if(!canContinue(token))return;var osc=ctx.createOscillator(),gain=ctx.createGain();osc.frequency.value=440;gain.gain.value=.12;osc.connect(gain);gain.connect(ctx.destination);osc.start();osc.stop(ctx.currentTime+.45);await wait(550);data.webAudio.generated=true;}catch(e){data.webAudio.error=errorInfo(e);}})();
+var html=(async function(){try{el.currentTime=0;var p=el.play();if(p)await limited(p,3000);data.htmlAudio.playPromiseResolved=true;await wait(700);data.htmlAudio.currentTime=el.currentTime;data.htmlAudio.ended=el.ended;data.htmlAudio.note='Use the player to replay WAV separately if tones overlap.';}catch(e){data.htmlAudio.error=errorInfo(e);}})();
+update('audio','running',data);await Promise.all([web,html]);dispose('audio');if(canContinue(token))update('audio',data.webAudio.error&&data.htmlAudio.error?'fail':'partial',data);
+};
+tests.webgl=async function(){var data={};['webgl','webgl2'].forEach(function(name){try{var canvas=document.createElement('canvas'),gl=canvas.getContext(name);data[name]=gl?{supported:true,maxTextureSize:gl.getParameter(gl.MAX_TEXTURE_SIZE),maxRenderbufferSize:gl.getParameter(gl.MAX_RENDERBUFFER_SIZE),version:gl.getParameter(gl.VERSION),shadingLanguage:gl.getParameter(gl.SHADING_LANGUAGE_VERSION)}:{supported:false};if(gl){var lose=gl.getExtension('WEBGL_lose_context');if(lose)lose.loseContext();}}catch(e){data[name]={supported:false,error:errorInfo(e)};}});update('webgl',data.webgl.supported||data.webgl2.supported?'pass':'fail',data);};
+function loadMapLibre(){if(window.maplibregl)return Promise.resolve();if(mapLoadPromise)return mapLoadPromise;
+mapLoadPromise=new Promise(function(resolve,reject){var css=document.createElement('link');css.rel='stylesheet';css.href='https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css';document.head.appendChild(css);var js=document.createElement('script');js.src='https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js';js.onload=function(){resolve();};js.onerror=function(){reject(new Error('MapLibre CDN failed'));};document.head.appendChild(js);});return mapLoadPromise;
+}
+tests.map=async function(token){
+var data={library:'MapLibre GL JS 4.7.1 (WebGL1-compatible branch)',style:'https://tiles.openfreemap.org/styles/liberty',center:[34.7818,32.0703],errors:[],durationSeconds:10},ended=false,finish,raf=null;
+cleanup.map=function(){ended=true;if(raf)cancelAnimationFrame(raf);if(mapInstance){mapInstance.remove();mapInstance=null;}if(finish)finish();};
+try{update('map','running',data);await limited(loadMapLibre(),18000);if(!canContinue(token))return;if(mapInstance)mapInstance.remove();
+mapInstance=new maplibregl.Map({container:'map',style:data.style,center:data.center,zoom:16,pitch:55,bearing:0,antialias:true});var map=mapInstance;
+map.on('error',function(e){if(!ended&&canContinue(token)&&data.errors.length<8){data.errors.push(errorInfo(e.error||e));}});
+await limited(new Promise(function(resolve,reject){map.once('load',resolve);map.once('webglcontextlost',function(){reject(new Error('WebGL context lost'));});}),22000);if(!canContinue(token)||ended)return;
+var label=map.getStyle().layers.find(function(l){return l.type==='symbol'&&l.layout&&l.layout['text-field'];});map.addSource('test-buildings',{type:'vector',url:'https://tiles.openfreemap.org/planet'});
+map.addLayer({id:'test-3d',type:'fill-extrusion',source:'test-buildings','source-layer':'building',minzoom:14,filter:['!=',['get','hide_3d'],true],paint:{'fill-extrusion-color':['interpolate',['linear'],['coalesce',['get','render_height'],9],0,'#9db5cc',40,'#7c9fb8',150,'#d6bd91'],'fill-extrusion-height':['coalesce',['get','render_height'],9],'fill-extrusion-base':['coalesce',['get','render_min_height'],0],'fill-extrusion-opacity':.85}},label?label.id:undefined);
+await limited(new Promise(function(resolve){if(map.loaded())resolve();else map.once('idle',resolve);}),15000).catch(function(){data.idleTimeout=true;});if(!canContinue(token)||ended)return;
+var frames=0,renders=0,begin=performance.now(),previous=begin,intervals=[];var onRender=function(){renders++;};map.on('render',onRender);
+await new Promise(function(resolve){finish=resolve;function frame(now){if(ended||!canContinue(token)){resolve();return;}frames++;intervals.push(now-previous);previous=now;var elapsed=now-begin;map.setBearing(elapsed*.003);$('fps').textContent='FPS: '+(frames*1000/Math.max(1,elapsed)).toFixed(1);if(elapsed<10000)raf=requestAnimationFrame(frame);else resolve();}raf=requestAnimationFrame(frame);});if(!canContinue(token)||ended)return;
+map.off('render',onRender);var duration=(performance.now()-begin)/1000;data.measuredSeconds=duration;data.animationFrames=frames;data.animationFPS=+(frames/duration).toFixed(1);data.renderEvents=renders;data.renderFPS=+(renders/duration).toFixed(1);intervals.sort(function(a,b){return a-b;});data.p95FrameIntervalMs=+intervals[Math.floor(intervals.length*.95)].toFixed(1);data.visibleBuildingFeatures=map.queryRenderedFeatures({layers:['test-3d']}).length;data.note='Rendered feature count may include tile duplicates; inspect the map visually. FPS reflects browser scheduling and a moving map, not navigation readiness.';update('map',data.visibleBuildingFeatures>0&&renders>0&&!data.errors.length?'pass':'partial',data);
+// Keep the successful map visible; Stop or the next map test removes it.
+}catch(e){if(canContinue(token))update('map','fail',Object.assign(data,{error:errorInfo(e),note:'May be CDN, network, browser, or GPU; WebGL test is independent.'}));dispose('map');}
+};
+var systemData={};
+function systemUpdate(){update('storage',systemData.localStorage&&systemData.localStorage.ok&&systemData.indexedDB&&systemData.indexedDB.ok?'pass':'partial',systemData);}
+tests.storage=async function(token){
+var key='tesla-capability-probe-'+Date.now()+'-'+Math.random().toString(36).slice(2),db=null;
+systemData={secureContext:window.isSecureContext,serviceWorker:{apiAvailable:'serviceWorker' in navigator,registrationTested:false,note:'Single HTML file; no worker installed.'},wakeLock:{apiAvailable:!!navigator.wakeLock,tested:false},notifications:{apiAvailable:'Notification' in window,permission:'Notification' in window?Notification.permission:null,tested:false},vibration:{apiAvailable:!!navigator.vibrate,tested:false},fullscreen:{apiAvailable:!!(document.documentElement.requestFullscreen||document.documentElement.webkitRequestFullscreen),enabled:document.fullscreenEnabled===undefined?null:document.fullscreenEnabled,tested:false},clipboard:{apiAvailable:!!(navigator.clipboard&&navigator.clipboard.writeText),tested:false}};
+try{var prev=localStorage.getItem(key);localStorage.setItem(key,'ok');systemData.localStorage={ok:localStorage.getItem(key)==='ok',readWriteTested:true};if(prev===null)localStorage.removeItem(key);else localStorage.setItem(key,prev);}catch(e){systemData.localStorage={ok:false,error:errorInfo(e)};}
+try{if(!window.indexedDB)throw new Error('IndexedDB API unavailable');await limited(new Promise(function(resolve,reject){var req=indexedDB.open(key,1);req.onupgradeneeded=function(){req.result.createObjectStore('test');};req.onerror=function(){reject(req.error);};req.onblocked=function(){reject(new Error('Database blocked'));};req.onsuccess=function(){db=req.result;if(!canContinue(token)){db.close();indexedDB.deleteDatabase(key);resolve();return;}var tx=db.transaction('test','readwrite');var store=tx.objectStore('test');store.put('ok','probe');var read=store.get('probe');read.onsuccess=function(){systemData.indexedDB={ok:read.result==='ok',readWriteTested:true};};tx.oncomplete=function(){resolve();};tx.onerror=tx.onabort=function(){reject(tx.error||new Error('Transaction aborted'));};};}),6000);}catch(e){systemData.indexedDB={ok:false,error:errorInfo(e)};}finally{if(db)db.close();try{indexedDB.deleteDatabase(key);}catch(e){}}
+if(canContinue(token))systemUpdate();
+};
+async function run(id){if(active[id])return;var token=generation;active[id]=true;document.querySelectorAll('[data-test="'+id+'"]').forEach(function(b){b.disabled=true;});update(id,'running',{startedAt:new Date().toISOString()});try{await tests[id](token);}catch(e){if(canContinue(token))update(id,'fail',{error:errorInfo(e)});}finally{active[id]=false;document.querySelectorAll('[data-test="'+id+'"]').forEach(function(b){b.disabled=false;});}}
+document.querySelectorAll('[data-test]').forEach(function(b){b.addEventListener('click',function(){run(b.dataset.test);});});
+$('runAll').onclick=async function(){if(allRunning||Object.keys(active).some(function(k){return active[k];})){$('global').textContent='המתן לסיום הבדיקה הפעילה לפני הרצה מלאה.';return;}allRunning=true;$('runAll').disabled=true;var token=generation;var order=['browser','webgl','storage','audio','speech','geo','mic','recognition','map'];try{for(var i=0;i<order.length&&canContinue(token);i++){var id=order[i];$('global').textContent='בודק: '+names[id]+' ('+(i+1)+'/'+order.length+')';if(id==='map'&&!$('includeMap').checked){update('map','skipped',{reason:'External map disabled'});continue;}await run(id);}}finally{allRunning=false;$('runAll').disabled=false;$('global').textContent=canContinue(token)?'ההרצה הסתיימה. בדוק את הסיכום; לחץ בנפרד על בדיקות קול והרשאות אם נדרש.':'הבדיקות נעצרו.';}};
+$('stop').onclick=function(){generation++;Object.keys(cleanup).forEach(dispose);Object.keys(results).forEach(function(k){if(results[k].state==='running')update(k,'partial',{stoppedByUser:true});});if(window.speechSynthesis)speechSynthesis.cancel();$('global').textContent='נעצר. בקשות הרשאה של הדפדפן עשויות להישאר פתוחות; אפשר לסגור אותן ידנית.';};
+function confirmation(id,yes){if(!results[id]||results[id].state==='running'){return;}var data=results[id].data;data.audibleConfirmed=yes;var ready=id==='audio'?data.webAudio&&data.webAudio.generated&&data.htmlAudio&&data.htmlAudio.playPromiseResolved:data.events&&data.events.indexOf('end')>=0;update(id,yes&&ready?'pass':'partial',data);}
+$('speechYes').onclick=function(){confirmation('speech',true);};$('speechNo').onclick=function(){confirmation('speech',false);};$('audioYes').onclick=function(){confirmation('audio',true);};$('audioNo').onclick=function(){confirmation('audio',false);};
+$('wake').onclick=async function(){try{if(!navigator.wakeLock)throw new Error('Wake Lock unavailable');var lock=await limited(navigator.wakeLock.request('screen'),5000);systemData.wakeLock={apiAvailable:true,tested:true,acquired:!lock.released};await lock.release();systemData.wakeLock.released=lock.released;}catch(e){systemData.wakeLock={tested:true,error:errorInfo(e)};}systemUpdate();};
+$('notify').onclick=async function(){try{if(!('Notification' in window))throw new Error('Notifications unavailable');systemData.notifications={tested:true,permission:await limited(Notification.requestPermission(),12000),notificationSent:false};}catch(e){systemData.notifications={tested:true,error:errorInfo(e)};}systemUpdate();};
+$('vibrate').onclick=function(){try{systemData.vibration={tested:true,accepted:navigator.vibrate?navigator.vibrate([100,80,100]):false,note:'API response only; no physical motor or sensation verified.'};}catch(e){systemData.vibration={tested:true,error:errorInfo(e)};}systemUpdate();};
+$('full').onclick=async function(){try{var el=document.documentElement;if(document.fullscreenElement){await document.exitFullscreen();systemData.fullscreen={tested:true,exited:true};}else{var request=el.requestFullscreen||el.webkitRequestFullscreen;if(!request)throw new Error('Fullscreen API unavailable');await limited(Promise.resolve(request.call(el)),4000);systemData.fullscreen={tested:true,active:!!(document.fullscreenElement||document.webkitFullscreenElement)};}}catch(e){systemData.fullscreen={tested:true,error:errorInfo(e)};}systemUpdate();};
+$('clipProbe').onclick=async function(){try{if(!navigator.clipboard||!navigator.clipboard.writeText)throw new Error('Clipboard API unavailable');await limited(navigator.clipboard.writeText('Tesla browser clipboard test'),4000);systemData.clipboard={tested:true,writeSucceeded:true,readTested:false};}catch(e){systemData.clipboard={tested:true,error:errorInfo(e)};}systemUpdate();};
+$('redact').onchange=renderSummary;
+$('copy').onclick=async function(){var text=JSON.stringify(exportData(),null,2);try{if(!navigator.clipboard||!navigator.clipboard.writeText)throw new Error('Clipboard API unavailable');await limited(navigator.clipboard.writeText(text),4000);$('copy-status').textContent='ה־JSON הועתק. ודא שהמיקום והתמלול מוסתרים לפני שיתוף.';}catch(e){var area=document.createElement('textarea');area.value=text;area.setAttribute('readonly','');document.body.appendChild(area);area.select();var ok=false;try{ok=document.execCommand('copy');}catch(ignored){}area.remove();$('copy-status').textContent=ok?'ה־JSON הועתק בשיטה חלופית.':'העתקה נחסמה: '+e.message+' — צלם את הסיכום או נסה הורדה.';}};
+$('download').onclick=function(){var url=URL.createObjectURL(new Blob([JSON.stringify(exportData(),null,2)],{type:'application/json'}));var a=document.createElement('a');a.href=url;a.download='tesla-browser-results-'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';a.click();setTimeout(function(){URL.revokeObjectURL(url);},2000);$('copy-status').textContent='התבקשה הורדה; דפדפן טסלה עשוי לא לתמוך בהורדות. אפשר גם לצלם.';};
+window.addEventListener('pagehide',function(){generation++;Object.keys(cleanup).forEach(dispose);});
+renderSummary();if(!window.isSecureContext)$('global').textContent='אזהרה: זה אינו הקשר מאובטח. פתח כתובת HTTPS ציבורית; בדיקות מיקום, מיקרופון והרשאות עשויות להיחסם.';
+})();
+</script>
+</body>
+</html>
